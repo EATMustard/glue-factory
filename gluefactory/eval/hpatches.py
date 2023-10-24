@@ -1,39 +1,29 @@
-import torch
-from pathlib import Path
-from omegaconf import OmegaConf
-from pprint import pprint
-import matplotlib.pyplot as plt
-import resource
 from collections import defaultdict
 from collections.abc import Iterable
-from tqdm import tqdm
+from pathlib import Path
+from pprint import pprint
+
+import matplotlib.pyplot as plt
 import numpy as np
-from ..visualization.viz2d import plot_cumulative
+import torch
+from omegaconf import OmegaConf
+from tqdm import tqdm
 
-from .io import (
-    parse_eval_args,
-    load_model,
-    get_eval_parser,
-)
-from ..utils.export_predictions import export_predictions
-from ..settings import EVAL_PATH
-from ..models.cache_loader import CacheLoader
 from ..datasets import get_dataset
-from .utils import (
-    eval_homography_robust,
-    eval_poses,
-    eval_matches_homography,
-    eval_homography_dlt,
-)
+from ..models.cache_loader import CacheLoader
+from ..settings import EVAL_PATH
+from ..utils.export_predictions import export_predictions
+from ..utils.tensor import map_tensor
 from ..utils.tools import AUCMetric
-
+from ..visualization.viz2d import plot_cumulative
 from .eval_pipeline import EvalPipeline
-
-
-rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
-
-torch.set_grad_enabled(False)
+from .io import get_eval_parser, load_model, parse_eval_args
+from .utils import (
+    eval_homography_dlt,
+    eval_homography_robust,
+    eval_matches_homography,
+    eval_poses,
+)
 
 
 class HPatchesPipeline(EvalPipeline):
@@ -117,9 +107,11 @@ class HPatchesPipeline(EvalPipeline):
         cache_loader = CacheLoader({"path": str(pred_file), "collate": None}).eval()
         for i, data in enumerate(tqdm(loader)):
             pred = cache_loader(data)
+            # Remove batch dimension
+            data = map_tensor(data, lambda t: torch.squeeze(t, dim=0))
             # add custom evaluations here
             if "keypoints0" in pred:
-                results_i = eval_matches_homography(data, pred, {})
+                results_i = eval_matches_homography(data, pred)
                 results_i = {**results_i, **eval_homography_dlt(data, pred)}
             else:
                 results_i = {}

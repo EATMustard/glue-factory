@@ -1,5 +1,5 @@
-import torch
 import kornia
+import torch
 
 from ..base_model import BaseModel
 from ..utils.misc import pad_and_stack
@@ -21,6 +21,7 @@ class DISK(BaseModel):
 
     def _init(self, conf):
         self.model = kornia.feature.DISK.from_pretrained(conf.weights)
+        self.set_initialized()
 
     def _get_dense_outputs(self, images):
         B = images.shape[0]

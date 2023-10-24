@@ -1,13 +1,14 @@
-import pkg_resources
-from pathlib import Path
-from typing import Optional
-from omegaconf import OmegaConf
 import argparse
+from pathlib import Path
 from pprint import pprint
+from typing import Optional
+
+import pkg_resources
+from omegaconf import OmegaConf
 
 from ..models import get_model
-from ..utils.experiments import load_experiment
 from ..settings import TRAINING_PATH
+from ..utils.experiments import load_experiment
 
 
 def parse_config_path(name_or_path: Optional[str], defaults: str) -> Path:
@@ -88,6 +89,11 @@ def load_model(model_conf, checkpoint):
         model = load_experiment(checkpoint, conf=model_conf).eval()
     else:
         model = get_model("two_view_pipeline")(model_conf).eval()
+    if not model.is_initialized():
+        raise ValueError(
+            "The provided model has non-initialized parameters. "
+            + "Try to load a checkpoint instead."
+        )
     return model
 
 

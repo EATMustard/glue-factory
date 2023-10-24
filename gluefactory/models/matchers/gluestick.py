@@ -7,9 +7,9 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 
+from ...settings import DATA_PATH
 from ..base_model import BaseModel
 from ..utils.metrics import matcher_metrics
-from ...settings import DATA_PATH
 
 warnings.filterwarnings("ignore", category=UserWarning)
 ETH_EPS = 1e-8
@@ -119,7 +119,7 @@ class GlueStick(BaseModel):
                     "Loading GlueStick model from " f'"{self.url.format(conf.version)}"'
                 )
                 state_dict = torch.hub.load_state_dict_from_url(
-                    self.url.format(conf.version), file_name=fname
+                    self.url.format(conf.version), file_name=fname, map_location="cpu"
                 )
 
             if "model" in state_dict:

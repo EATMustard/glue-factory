@@ -1,9 +1,9 @@
+import deeplsd.models.deeplsd_inference as deeplsd_inference
 import numpy as np
 import torch
-import deeplsd.models.deeplsd_inference as deeplsd_inference
 
-from ..base_model import BaseModel
 from ...settings import DATA_PATH
+from ..base_model import BaseModel
 
 
 class DeepLSD(BaseModel):
@@ -34,6 +34,7 @@ class DeepLSD(BaseModel):
         ckpt = torch.load(ckpt, map_location="cpu")
         self.net = deeplsd_inference.DeepLSD(conf.model_conf).eval()
         self.net.load_state_dict(ckpt["model"])
+        self.set_initialized()
 
     def download_model(self, path):
         import subprocess

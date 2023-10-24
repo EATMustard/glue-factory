@@ -1,11 +1,12 @@
-import torch
 import string
-import h5py
 
-from .base_model import BaseModel
-from ..settings import DATA_PATH
+import h5py
+import torch
+
 from ..datasets.base_dataset import collate
+from ..settings import DATA_PATH
 from ..utils.tensor import batch_to_device
+from .base_model import BaseModel
 from .utils.misc import pad_to_length
 
 
@@ -28,6 +29,15 @@ def pad_local_features(pred: dict, seq_l: int):
         pred["scales"] = pad_to_length(pred["scales"], seq_l, -1, mode="zeros")
     if "oris" in pred.keys():
         pred["oris"] = pad_to_length(pred["oris"], seq_l, -1, mode="zeros")
+
+    if "depth_keypoints" in pred.keys():
+        pred["depth_keypoints"] = pad_to_length(
+            pred["depth_keypoints"], seq_l, -1, mode="zeros"
+        )
+    if "valid_depth_keypoints" in pred.keys():
+        pred["valid_depth_keypoints"] = pad_to_length(
+            pred["valid_depth_keypoints"], seq_l, -1, mode="zeros"
+        )
     return pred
 
 

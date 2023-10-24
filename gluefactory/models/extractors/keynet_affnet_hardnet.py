@@ -1,5 +1,5 @@
-import torch
 import kornia
+import torch
 
 from ..base_model import BaseModel
 from ..utils.misc import pad_to_length
@@ -21,6 +21,7 @@ class KeyNetAffNetHardNet(BaseModel):
             upright=conf.upright,
             scale_laf=conf.scale_laf,
         )
+        self.set_initialized()
 
     def _forward(self, data):
         image = data["image"]
