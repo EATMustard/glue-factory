@@ -1,7 +1,7 @@
 import torch
 
-from ..utils.tools import get_class
-from .eval_pipeline import EvalPipeline
+from gluefactory.utils.tools import get_class
+from gluefactory.eval.eval_pipeline import EvalPipeline
 
 
 def get_benchmark(benchmark):

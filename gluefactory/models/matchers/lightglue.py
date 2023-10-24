@@ -9,9 +9,13 @@ from omegaconf import OmegaConf
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from ...settings import DATA_PATH
-from ..utils.losses import NLLLoss
-from ..utils.metrics import matcher_metrics
+
+import sys
+sys.path.append('/Data/lhj/zhangjt/glue-factory/gluefactory')
+
+from gluefactory.settings import DATA_PATH
+from gluefactory.models.utils.losses import NLLLoss
+from gluefactory.models.utils.metrics import matcher_metrics
 
 FLASH_AVAILABLE = hasattr(F, "scaled_dot_product_attention")
 

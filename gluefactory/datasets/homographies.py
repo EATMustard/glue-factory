@@ -18,18 +18,18 @@ import torch
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
-from ..geometry.homography import (
+from gluefactory.geometry.homography import (
     compute_homography,
     sample_homography_corners,
     warp_points,
 )
-from ..models.cache_loader import CacheLoader, pad_local_features
-from ..settings import DATA_PATH
-from ..utils.image import read_image
-from ..utils.tools import fork_rng
-from ..visualization.viz2d import plot_image_grid
-from .augmentations import IdentityAugmentation, augmentations
-from .base_dataset import BaseDataset
+from gluefactory.models.cache_loader import CacheLoader, pad_local_features
+from gluefactory.settings import DATA_PATH
+from gluefactory.utils.image import read_image
+from gluefactory.utils.tools import fork_rng
+from gluefactory.visualization.viz2d import plot_image_grid
+from gluefactory.datasets.augmentations import IdentityAugmentation, augmentations
+from gluefactory.datasets.base_dataset import BaseDataset
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class HomographyDataset(BaseDataset):
         if conf.shuffle_seed is not None:
             np.random.RandomState(conf.shuffle_seed).shuffle(images)
         train_images = images[: conf.train_size]
-        val_images = images[conf.train_size : conf.train_size + conf.val_size]
+        val_images = images[conf.train_size: conf.train_size + conf.val_size]
         self.images = {"train": train_images, "val": val_images}
 
     def download_revisitop1m(self):
@@ -144,7 +144,7 @@ class HomographyDataset(BaseDataset):
             torch.hub.download_url_to_file(url_base + "jpg/" + tar_name, tar_path)
             with tarfile.open(tar_path) as tar:
                 tar.extractall(path=image_dir)
-            tar_path.unlink()
+            tar_path.unlink()   # delete tar
         shutil.move(tmp_dir, data_dir)
 
     def get_dataset(self, split):
@@ -161,7 +161,7 @@ class _Dataset(torch.utils.data.Dataset):
         aug_conf = conf.photometric
         aug_name = aug_conf.name
         assert (
-            aug_name in augmentations.keys()
+                aug_name in augmentations.keys()
         ), f'{aug_name} not in {" ".join(augmentations.keys())}'
         self.photo_augment = augmentations[aug_name](aug_conf)
         self.left_augment = (
@@ -181,10 +181,10 @@ class _Dataset(torch.utils.data.Dataset):
         )
         h, w = data["image"].shape[1:3]
         valid = (
-            (features["keypoints"][:, 0] >= 0)
-            & (features["keypoints"][:, 0] <= w - 1)
-            & (features["keypoints"][:, 1] >= 0)
-            & (features["keypoints"][:, 1] <= h - 1)
+                (features["keypoints"][:, 0] >= 0)
+                & (features["keypoints"][:, 0] <= w - 1)
+                & (features["keypoints"][:, 1] >= 0)
+                & (features["keypoints"][:, 1] <= h - 1)
         )
         features["keypoints"] = features["keypoints"][valid]
 
@@ -239,7 +239,7 @@ class _Dataset(torch.utils.data.Dataset):
             img = np.zeros((1024, 1024) + (() if self.conf.grayscale else (3,)))
         img = img.astype(np.float32) / 255.0
         size = img.shape[:2][::-1]
-        ps = self.conf.homography.patch_shape
+        ps = self.conf.homography.patch_shape  # 特征点采样？[640, 480]
 
         left_conf = omegaconf.OmegaConf.to_container(self.conf.homography)
         if self.conf.right_only:

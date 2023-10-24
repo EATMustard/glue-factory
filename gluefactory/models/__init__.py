@@ -1,7 +1,7 @@
 import importlib.util
 
-from ..utils.tools import get_class
-from .base_model import BaseModel
+from gluefactory.utils.tools import get_class
+from gluefactory.models.base_model import BaseModel
 
 
 def get_model(name):

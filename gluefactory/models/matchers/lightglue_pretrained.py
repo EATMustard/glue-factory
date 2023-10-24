@@ -1,7 +1,6 @@
+from ..base_model import BaseModel
 from lightglue import LightGlue as LightGlue_
 from omegaconf import OmegaConf
-
-from ..base_model import BaseModel
 
 
 class LightGlue(BaseModel):
@@ -17,18 +16,17 @@ class LightGlue(BaseModel):
 
     def _init(self, conf):
         dconf = OmegaConf.to_container(conf)
-        self.net = LightGlue_(dconf.pop("features"), **dconf)
-        self.set_initialized()
+        self.net = LightGlue_(dconf.pop("features"), **dconf).cuda()
+        # self.net.compile()
 
     def _forward(self, data):
-        required_keys = ["keypoints", "descriptors", "scales", "oris"]
         view0 = {
+            **{k: data[k + "0"] for k in ["keypoints", "descriptors"]},
             **data["view0"],
-            **{k: data[k + "0"] for k in required_keys if (k + "0") in data},
         }
         view1 = {
+            **{k: data[k + "1"] for k in ["keypoints", "descriptors"]},
             **data["view1"],
-            **{k: data[k + "1"] for k in required_keys if (k + "1") in data},
         }
         return self.net({"image0": view0, "image1": view1})
 

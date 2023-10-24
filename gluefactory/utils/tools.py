@@ -193,6 +193,7 @@ class Timer(object):
 def get_class(mod_path, BaseClass):
     """Get the class object which inherits from BaseClass and is defined in
     the module named mod_name, child of base_path.
+    从指定模块中找到继承自 BaseClass 的类对象，并返回该类对象
     """
     import inspect
 

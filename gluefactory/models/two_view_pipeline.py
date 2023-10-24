@@ -12,8 +12,8 @@ that corresponds to the keypoint i in image 0. m0[i] = -1 if i is unmatched.
 
 from omegaconf import OmegaConf
 
-from . import get_model
-from .base_model import BaseModel
+from gluefactory.models import get_model
+from gluefactory.models.base_model import BaseModel
 
 to_ctr = OmegaConf.to_container  # convert DictConfig to dict
 

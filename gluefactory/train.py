@@ -20,15 +20,15 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from . import __module_name__, logger
-from .datasets import get_dataset
-from .eval import run_benchmark
-from .models import get_model
-from .settings import EVAL_PATH, TRAINING_PATH
-from .utils.experiments import get_best_checkpoint, get_last_checkpoint, save_experiment
-from .utils.stdout_capturing import capture_outputs
-from .utils.tensor import batch_to_device
-from .utils.tools import (
+from gluefactory import __module_name__, logger
+from datasets import get_dataset
+from eval import run_benchmark
+from models import get_model
+from settings import EVAL_PATH, TRAINING_PATH
+from utils.experiments import get_best_checkpoint, get_last_checkpoint, save_experiment
+from utils.stdout_capturing import capture_outputs
+from utils.tensor import batch_to_device
+from utils.tools import (
     AverageMetric,
     MedianMetric,
     PRMetric,
@@ -633,7 +633,7 @@ def main_worker(rank, conf, output_dir, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("experiment", type=str)
-    parser.add_argument("--conf", type=str)
+    parser.add_argument("--conf", type=str) # 配置文件
     parser.add_argument(
         "--mixed_precision",
         "--mp",
