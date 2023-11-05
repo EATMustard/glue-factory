@@ -26,7 +26,7 @@ class FriendsTripletPipeline(TwoViewPipeline):
     def create_help_descritors(self, pred):
         """处理函数，生成视图对齐的辅助描述符"""
         help_descriptors = pred["descriptors0"].clone()
-        index = pred["gt_matches0"]
+        index = pred["gt_matches0_0_1"]
         B_descriptors = pred["descriptors1"]
 
         for b in range(0, index.shape[0]):
@@ -56,7 +56,7 @@ class FriendsTripletPipeline(TwoViewPipeline):
         gt_views_idx = [0, 1]
         if self.conf.ground_truth.name:
             gt_pred = self.ground_truth({**data, **pred, "view_idx": gt_views_idx})
-            pred.update({f"gt_{k}": v for k, v in gt_pred.items()})
+            pred.update({f"gt_{k}_{gt_views_idx[0]}_{gt_views_idx[1]}": v for k, v in gt_pred.items()})
 
         pred = self.create_help_descritors(pred)
 
@@ -71,3 +71,26 @@ class FriendsTripletPipeline(TwoViewPipeline):
 
     def loss(self, pred, data):
         assert has_triplet(data)
+        losses = {}
+        metrics = {}
+        total = 0
+
+        # get labels
+        gt_views_idx = [0, 2]
+        if self.conf.ground_truth.name and not self.conf.run_gt_in_forward:
+            gt_pred = self.ground_truth({**data, **pred, "view_idx": gt_views_idx})
+            pred.update({f"gt_{k}_{gt_views_idx[0]}_{gt_views_idx[1]}": v for k, v in gt_pred.items()})
+
+        for k in self.components:
+            apply = True
+            if "apply_loss" in self.conf[k].keys():
+                apply = self.conf[k].apply_loss
+            if self.conf[k].name and apply:
+                try:
+                    losses_, metrics_ = getattr(self, k).loss(pred, {**pred, **data})
+                except NotImplementedError:
+                    continue
+                losses = {**losses, **losses_}
+                metrics = {**metrics, **metrics_}
+                total = losses_["total"] + total
+        return {**losses, "total": total}, metrics

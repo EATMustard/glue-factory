@@ -13,14 +13,14 @@ def make_match_figures(pred_, data_, n_pairs=2):
     pred = batch_to_device(pred_, "cpu", non_blocking=False)
     data = batch_to_device(data_, "cpu", non_blocking=False)
 
-    view0, view1 = data["view0"], data["view1"]
+    view0, view1 = data["view0"], data["view2"]
 
     n_pairs = min(n_pairs, view0["image"].shape[0])
     assert view0["image"].shape[0] >= n_pairs
 
-    kp0, kp1 = pred["keypoints0"], pred["keypoints1"]
+    kp0, kp1 = pred["keypoints0"], pred["keypoints2"]
     m0 = pred["matches0"]
-    gtm0 = pred["gt_matches0"]
+    gtm0 = pred["gt_matches0_0_2"]
 
     for i in range(n_pairs):
         valid = (m0[i] > -1) & (gtm0[i] >= -1)

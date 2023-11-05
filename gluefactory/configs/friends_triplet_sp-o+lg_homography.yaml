@@ -3,8 +3,8 @@ data:
     data_dir: revisitop1m
     train_size: 150000
     val_size: 2000
-    batch_size: 16
-    num_workers: 6
+    batch_size: 24
+    num_workers: 14
     triplet: True
     homography:
         difficulty: 0.7
@@ -25,7 +25,7 @@ model:
         th_positive: 3
         th_negative: 3
     matcher:
-        name: matchers.lightglue
+        name: matchers.triplet_friends_matcher
         filter_threshold: 0.1
         flash: false
         checkpointed: true

@@ -9,8 +9,8 @@ from omegaconf import OmegaConf
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-
 import sys
+
 sys.path.append('/Data/lhj/zhangjt/glue-factory/gluefactory')
 
 from gluefactory.settings import DATA_PATH
@@ -24,15 +24,15 @@ torch.backends.cudnn.deterministic = True
 
 @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
 def normalize_keypoints(
-    kpts: torch.Tensor, size: Optional[torch.Tensor] = None
+        kpts: torch.Tensor, size: Optional[torch.Tensor] = None
 ) -> torch.Tensor:  # 关键点坐标归一化
     if size is None:
         size = 1 + kpts.max(-2).values - kpts.min(-2).values
     elif not isinstance(size, torch.Tensor):
         size = torch.tensor(size, device=kpts.device, dtype=kpts.dtype)
-    size = size.to(kpts) # 640 480
+    size = size.to(kpts)  # 640 480
     shift = size / 2
-    scale = size.max(-1).values / 2 # 320
+    scale = size.max(-1).values / 2  # 320
     kpts = (kpts - shift[..., None, :]) / scale[..., None, None]
     return kpts
 
@@ -43,17 +43,19 @@ def rotate_half(x: torch.Tensor) -> torch.Tensor:
     return torch.stack((-x2, x1), dim=-1).flatten(start_dim=-2)
 
 
-def apply_cached_rotary_emb(freqs: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+def apply_cached_rotary_emb(freqs: torch.Tensor, t: torch.Tensor) -> torch.Tensor:  # 2,16,1,512,128
     return (t * freqs[0]) + (rotate_half(t) * freqs[1])
 
 
 class LearnableFourierPositionalEncoding(nn.Module):
-    def __init__(self, M: int, dim: int, F_dim: int = None, gamma: float = 1.0) -> None:
+    def __init__(self, M: int, dim: int, F_dim: int = None, gamma: float = 1.0, concat = False) -> None:
         super().__init__()
         F_dim = F_dim if F_dim is not None else dim
+        if concat == True:
+            F_dim = F_dim * 2
         self.gamma = gamma
         self.Wr = nn.Linear(M, F_dim // 2, bias=False)
-        nn.init.normal_(self.Wr.weight.data, mean=0, std=self.gamma**-2)
+        nn.init.normal_(self.Wr.weight.data, mean=0, std=self.gamma ** -2)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """encode position vector"""
@@ -81,14 +83,14 @@ class TokenConfidence(nn.Module):
         logit1 = self.token[0](desc1.detach()).squeeze(-1)  # 16，512
         la_now, la_final = la_now.detach(), la_final.detach()
         correct0 = (
-            la_final[:, :-1, :].max(-1).indices == la_now[:, :-1, :].max(-1).indices
+                la_final[:, :-1, :].max(-1).indices == la_now[:, :-1, :].max(-1).indices
         )
         correct1 = (
-            la_final[:, :, :-1].max(-2).indices == la_now[:, :, :-1].max(-2).indices
+                la_final[:, :, :-1].max(-2).indices == la_now[:, :, :-1].max(-2).indices
         )
         return (
-            self.loss_fn(logit0, correct0.float()).mean(-1)
-            + self.loss_fn(logit1, correct1.float()).mean(-1)
+                self.loss_fn(logit0, correct0.float()).mean(-1)
+                + self.loss_fn(logit1, correct1.float()).mean(-1)
         ) / 2.0
 
 
@@ -128,47 +130,86 @@ class Attention(nn.Module):
 
 class SelfBlock(nn.Module):
     def __init__(
-        self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True
+            self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True, concat: bool = False
     ) -> None:
         super().__init__()
-        self.embed_dim = embed_dim
+        if concat == True:
+            self.embed_dim = 2 * embed_dim
+        else:
+            self.embed_dim = embed_dim
         self.num_heads = num_heads
         assert self.embed_dim % num_heads == 0
         self.head_dim = self.embed_dim // num_heads
-        self.Wqkv = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
+        self.Wqkv = nn.Linear(self.embed_dim, 3 * self.embed_dim, bias=bias)
         self.inner_attn = Attention(flash)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=bias)
         self.ffn = nn.Sequential(
-            nn.Linear(2 * embed_dim, 2 * embed_dim),
-            nn.LayerNorm(2 * embed_dim, elementwise_affine=True),
+            nn.Linear(2 * self.embed_dim, 2 * self.embed_dim),
+            nn.LayerNorm(2 * self.embed_dim, elementwise_affine=True),
             nn.GELU(),
-            nn.Linear(2 * embed_dim, embed_dim),
+            nn.Linear(2 * self.embed_dim, self.embed_dim),
         )
 
     def forward(
-        self,
-        x: torch.Tensor,
-        encoding: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
+            self,
+            x: torch.Tensor,
+            encoding: torch.Tensor,
+            mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        qkv = self.Wqkv(x)
-        qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)
-        q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2]
-        q = apply_cached_rotary_emb(encoding, q)
+        qkv = self.Wqkv(x)  # 16，512, 1536
+        qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)    #16, 4, 512, 128, 3
+        q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2] # 16,4,512,128  encoding: 2 16 1 512 64
+        q = apply_cached_rotary_emb(encoding, q)    # 16,4,512,64
         k = apply_cached_rotary_emb(encoding, k)
         context = self.inner_attn(q, k, v, mask=mask)
         message = self.out_proj(context.transpose(1, 2).flatten(start_dim=-2))
         return x + self.ffn(torch.cat([x, message], -1))
 
 
+class UnidirectionalCrossBlock(nn.Module):
+    def __init__(
+            self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True
+    ) -> None:
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        assert self.embed_dim % num_heads == 0
+        self.head_dim = self.embed_dim // num_heads
+        self.Wq = nn.Linear(self.embed_dim, self.embed_dim, bias=bias)
+        self.Wkv = nn.Linear(self.embed_dim, 2 * self.embed_dim, bias=bias)
+        self.inner_attn = Attention(flash)
+        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=bias)
+        self.ffn = nn.Sequential(
+            nn.Linear(2 * self.embed_dim, 2 * self.embed_dim),
+            nn.LayerNorm(2 * self.embed_dim, elementwise_affine=True),
+            nn.GELU(),
+            nn.Linear(2 * self.embed_dim, self.embed_dim),
+        )
+
+    def forward(
+            self,
+            desc0: torch.Tensor,
+            desc1: torch.Tensor
+    ) -> torch.Tensor:
+        q = self.Wq(desc0)
+        kv = self.Wkv(desc1)    # 16,512,512
+        q = q.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
+        kv = kv.unflatten(-1, (self.num_heads, -1, 2)).transpose(1, 2)
+        k, v = kv[..., 0], kv[..., 1]
+        context = self.inner_attn(q, k, v)
+        message = self.out_proj(context.transpose(1, 2).flatten(start_dim=-2))
+        return desc0 + self.ffn(torch.cat([desc0, message], -1))
+
+
+
 class CrossBlock(nn.Module):
     def __init__(
-        self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True
+            self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True
     ) -> None:
         super().__init__()
         self.heads = num_heads
         dim_head = embed_dim // num_heads
-        self.scale = dim_head**-0.5
+        self.scale = dim_head ** -0.5
         inner_dim = dim_head * num_heads
         self.to_qk = nn.Linear(embed_dim, inner_dim, bias=bias)
         self.to_v = nn.Linear(embed_dim, inner_dim, bias=bias)
@@ -188,7 +229,7 @@ class CrossBlock(nn.Module):
         return func(x0), func(x1)
 
     def forward(
-        self, x0: torch.Tensor, x1: torch.Tensor, mask: Optional[torch.Tensor] = None
+            self, x0: torch.Tensor, x1: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> List[torch.Tensor]:
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
@@ -202,7 +243,7 @@ class CrossBlock(nn.Module):
                 qk1, qk0, v0, mask.transpose(-1, -2) if mask is not None else None
             )
         else:
-            qk0, qk1 = qk0 * self.scale**0.5, qk1 * self.scale**0.5
+            qk0, qk1 = qk0 * self.scale ** 0.5, qk1 * self.scale ** 0.5
             sim = torch.einsum("bhid, bhjd -> bhij", qk0, qk1)
             if mask is not None:
                 sim = sim.masked_fill(~mask, -float("inf"))
@@ -219,27 +260,54 @@ class CrossBlock(nn.Module):
         return x0, x1
 
 
+class MLP(nn.Module):
+    def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True):
+        super(MLP, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(embed_dim * 2, embed_dim),
+            nn.Sigmoid(),
+            nn.Linear(embed_dim, embed_dim)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+
 class TransformerLayer(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
+        self.self_attn_concat = SelfBlock(*args, **kwargs, concat=True)
+
+        self.mlp = MLP(*args, **kwargs)
+        self.unidirectional_cross_attn = UnidirectionalCrossBlock(*args, **kwargs)
         self.cross_attn = CrossBlock(*args, **kwargs)
 
     def forward(
-        self,
-        desc0,
-        desc1,
-        encoding0,
-        encoding1,
-        mask0: Optional[torch.Tensor] = None,
-        mask1: Optional[torch.Tensor] = None,
+            self,
+            desc0,
+            desc1,
+            encoding0,
+            encoding1,
+            help_desc,
+            mask0: Optional[torch.Tensor] = None,
+            mask1: Optional[torch.Tensor] = None,
     ):
         if mask0 is not None and mask1 is not None:
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
         else:
-            desc0 = self.self_attn(desc0, encoding0)
+            dim = desc0.shape[2]
+            # concat
+            desc_concat = torch.cat((desc0, help_desc), dim=2)
+            desc_concat = self.self_attn_concat(desc_concat, encoding0)
             desc1 = self.self_attn(desc1, encoding1)
-            return self.cross_attn(desc0, desc1)
+
+            desc_reduction = self.mlp(desc_concat)   # 降维
+            desc_concat = desc_concat[:, :, -dim:]   # 取后dim维
+            desc_concat = self.unidirectional_cross_attn(desc_concat, desc1)
+
+            desc_reduction, desc1 = self.cross_attn(desc_reduction, desc1)
+            return desc_reduction, desc1, desc_concat
 
     # This part is compiled and allows padding inputs
     def masked_forward(self, desc0, desc1, encoding0, encoding1, mask0, mask1):
@@ -252,7 +320,7 @@ class TransformerLayer(nn.Module):
 
 
 def sigmoid_log_double_softmax(
-    sim: torch.Tensor, z0: torch.Tensor, z1: torch.Tensor
+        sim: torch.Tensor, z0: torch.Tensor, z1: torch.Tensor
 ) -> torch.Tensor:
     """create the log assignment matrix from logits and similarity"""
     b, m, n = sim.shape
@@ -277,7 +345,7 @@ class MatchAssignment(nn.Module):
         """build assignment matrix from descriptors"""
         mdesc0, mdesc1 = self.final_proj(desc0), self.final_proj(desc1)
         _, _, d = mdesc0.shape
-        mdesc0, mdesc1 = mdesc0 / d**0.25, mdesc1 / d**0.25
+        mdesc0, mdesc1 = mdesc0 / d ** 0.25, mdesc1 / d ** 0.25
         sim = torch.einsum("bmd,bnd->bmn", mdesc0, mdesc1)
         z0 = self.matchability(desc0)
         z1 = self.matchability(desc1)
@@ -307,7 +375,7 @@ def filter_matches(scores: torch.Tensor, th: float):
     return m0, m1, mscores0, mscores1
 
 
-class LightGlue(nn.Module):
+class TripletFriendsMatcher(nn.Module):
     default_conf = {
         "name": "lightglue",  # just for interfacing
         "input_dim": 256,  # input descriptor dimension (autoselected from weights)
@@ -340,10 +408,13 @@ class LightGlue(nn.Module):
         if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(conf.input_dim, conf.descriptor_dim, bias=True)
         else:
-            self.input_proj = nn.Identity() # 恒等变换
+            self.input_proj = nn.Identity()  # 恒等变换
 
         head_dim = conf.descriptor_dim // conf.num_heads
-        self.posenc = LearnableFourierPositionalEncoding(
+        self.posenc0 = LearnableFourierPositionalEncoding(
+            2 + 2 * conf.add_scale_ori, head_dim, head_dim, concat = True
+        )
+        self.posenc1 = LearnableFourierPositionalEncoding(
             2 + 2 * conf.add_scale_ori, head_dim, head_dim
         )
 
@@ -371,8 +442,8 @@ class LightGlue(nn.Module):
                 )
             else:
                 fname = (
-                    f"{conf.weights}_{conf.weights_from_version}".replace(".", "-")
-                    + ".pth"
+                        f"{conf.weights}_{conf.weights_from_version}".replace(".", "-")
+                        + ".pth"
                 )
                 state_dict = torch.hub.load_state_dict_from_url(
                     self.url.format(conf.weights_from_version, conf.weights),
@@ -405,16 +476,16 @@ class LightGlue(nn.Module):
             assert key in data, f"Missing key {key} in data"
 
         kpts0, kpts1 = data["keypoints0"], data["keypoints2"]
-        b, m, _ = kpts0.shape # 16 512
+        b, m, _ = kpts0.shape  # 16 512
         b, n, _ = kpts1.shape
         device = kpts0.device
-        if "view0" in data.keys() and "view1" in data.keys():
-            size0 = data["view0"].get("image_size") # 640 480
-            size1 = data["view1"].get("image_size")
-        kpts0 = normalize_keypoints(kpts0, size0).clone()   # 16，512，2
+        if "view0" in data.keys() and "view2" in data.keys():
+            size0 = data["view0"].get("image_size")  # 640 480
+            size1 = data["view2"].get("image_size")
+        kpts0 = normalize_keypoints(kpts0, size0).clone()  # 16，512，2
         kpts1 = normalize_keypoints(kpts1, size1).clone()
 
-        if self.conf.add_scale_ori: # false
+        if self.conf.add_scale_ori:  # false
             sc0, o0 = data["scales0"], data["oris0"]
             sc1, o1 = data["scales1"], data["oris1"]
             kpts0 = torch.cat(
@@ -434,23 +505,27 @@ class LightGlue(nn.Module):
                 -1,
             )
 
-        desc0 = data["descriptors0"].contiguous()   # 16,512,256
+        desc0 = data["descriptors0"].contiguous()  # 16,512,256
         desc1 = data["descriptors2"].contiguous()
+
+        help_desc = data["help_descriptors"].contiguous()
 
         assert desc0.shape[-1] == self.conf.input_dim
         assert desc1.shape[-1] == self.conf.input_dim
-        if torch.is_autocast_enabled(): # false
+        assert help_desc.shape[-1] == self.conf.input_dim
+
+        if torch.is_autocast_enabled():  # false
             desc0 = desc0.half()
             desc1 = desc1.half()
         desc0 = self.input_proj(desc0)  # 恒等变换
         desc1 = self.input_proj(desc1)  # 恒等变换
         # cache positional embeddings
-        encoding0 = self.posenc(kpts0)  # 16，512，2 ——> 2，16，1，512，64
-        encoding1 = self.posenc(kpts1)
+        encoding0 = self.posenc0(kpts0)  # 16，512，2 ——> 2，16，1，512，64
+        encoding1 = self.posenc1(kpts1)
 
         # GNN + final_proj + assignment
-        do_early_stop = self.conf.depth_confidence > 0 and not self.training    # false
-        do_point_pruning = self.conf.width_confidence > 0 and not self.training # false
+        do_early_stop = self.conf.depth_confidence > 0 and not self.training  # false
+        do_point_pruning = self.conf.width_confidence > 0 and not self.training  # false
 
         all_desc0, all_desc1 = [], []
 
@@ -461,13 +536,14 @@ class LightGlue(nn.Module):
             prune0 = torch.ones_like(ind0)
             prune1 = torch.ones_like(ind1)
         token0, token1 = None, None
-        for i in range(self.conf.n_layers): # 9
+        for i in range(self.conf.n_layers):  # 9
             if self.conf.checkpointed and self.training:
-                desc0, desc1 = checkpoint(
-                    self.transformers[i], desc0, desc1, encoding0, encoding1
+                desc0, desc1, help_desc = checkpoint(
+                    self.transformers[i], desc0, desc1, encoding0, encoding1, help_desc
                 )
             else:
-                desc0, desc1 = self.transformers[i](desc0, desc1, encoding0, encoding1)
+                desc0, desc1, help_desc = self.transformers[i](desc0, desc1, encoding0, encoding1, help_desc)
+
             if self.training or i == self.conf.n_layers - 1:
                 all_desc0.append(desc0)
                 all_desc1.append(desc1)
@@ -497,7 +573,7 @@ class LightGlue(nn.Module):
                 prune1[:, ind1] += 1
 
         desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
-        scores, _ = self.log_assignment[i](desc0, desc1)    # 16 513 513
+        scores, _ = self.log_assignment[i](desc0, desc1)  # 16 513 513
         m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
         # （16，512），（16，512），（16，512），（16，512）
         if do_point_pruning:
@@ -511,8 +587,8 @@ class LightGlue(nn.Module):
             mscores1_[:, ind1] = mscores1
             m0, m1, mscores0, mscores1 = m0_, m1_, mscores0_, mscores1_
         else:
-            prune0 = torch.ones_like(mscores0) * self.conf.n_layers # 16,512
-            prune1 = torch.ones_like(mscores1) * self.conf.n_layers # 16,512
+            prune0 = torch.ones_like(mscores0) * self.conf.n_layers  # 16,512
+            prune1 = torch.ones_like(mscores1) * self.conf.n_layers  # 16,512
 
         pred = {
             "matches0": m0,
@@ -534,7 +610,7 @@ class LightGlue(nn.Module):
         return np.clip(threshold, 0, 1)
 
     def get_pruning_mask(
-        self, confidences: torch.Tensor, scores: torch.Tensor, layer_index: int
+            self, confidences: torch.Tensor, scores: torch.Tensor, layer_index: int
     ) -> torch.Tensor:
         """mask points which should be removed"""
         keep = scores > (1 - self.conf.width_confidence)
@@ -543,11 +619,11 @@ class LightGlue(nn.Module):
         return keep
 
     def check_if_stop(
-        self,
-        confidences0: torch.Tensor,
-        confidences1: torch.Tensor,
-        layer_index: int,
-        num_points: int,
+            self,
+            confidences0: torch.Tensor,
+            confidences1: torch.Tensor,
+            layer_index: int,
+            num_points: int,
     ) -> torch.Tensor:
         """evaluate stopping condition"""
         confidences = torch.cat([confidences0, confidences1], -1)
@@ -571,25 +647,25 @@ class LightGlue(nn.Module):
             }
 
         sum_weights = 1.0
-        nll, gt_weights, loss_metrics = self.loss_fn(loss_params(pred, -1), data)   # metrics里含不同指标
-        N = pred["ref_descriptors0"].shape[1]   # 9
+        nll, gt_weights, loss_metrics = self.loss_fn(loss_params(pred, -1), data)  # metrics里含不同指标
+        N = pred["ref_descriptors0"].shape[1]  # 9
         losses = {"total": nll, "last": nll.clone().detach(), **loss_metrics}
 
         if self.training:
             losses["confidence"] = 0.0
 
         # B = pred['log_assignment'].shape[0]
-        losses["row_norm"] = pred["log_assignment"].exp()[:, :-1].sum(2).mean(1)    # 16    计算每行分配矩阵和的均值（每个特征点对应的另一个特征点的对应距离加起来，再对点数求平均）
+        losses["row_norm"] = pred["log_assignment"].exp()[:, :-1].sum(2).mean(1)  # 16    计算每行分配矩阵和的均值（每个特征点对应的另一个特征点的对应距离加起来，再对点数求平均）
         for i in range(N - 1):  # 是计算第二步的，confidence    8个中间损失
             params_i = loss_params(pred, i)
-            nll, _, _ = self.loss_fn(params_i, data, weights=gt_weights)   # 第i层的nll
+            nll, _, _ = self.loss_fn(params_i, data, weights=gt_weights)  # 第i层的nll
 
             if self.conf.loss.gamma > 0.0:  # 1
-                weight = self.conf.loss.gamma ** (N - i - 1)    # 1
+                weight = self.conf.loss.gamma ** (N - i - 1)  # 1
             else:
                 weight = i + 1
             sum_weights += weight
-            losses["total"] = losses["total"] + nll * weight    # 逐层损失
+            losses["total"] = losses["total"] + nll * weight  # 逐层损失
 
             losses["confidence"] += self.token_confidence[i].loss(
                 pred["ref_descriptors0"][:, i],
@@ -602,7 +678,7 @@ class LightGlue(nn.Module):
         losses["total"] /= sum_weights
 
         # confidences
-        if self.training:   # False
+        if self.training:  # False
             losses["total"] = losses["total"] + losses["confidence"]
 
         if not self.training:
@@ -613,4 +689,4 @@ class LightGlue(nn.Module):
         return losses, metrics
 
 
-__main_model__ = LightGlue
+__main_model__ = TripletFriendsMatcher
