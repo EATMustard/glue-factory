@@ -109,9 +109,9 @@ class HomographyDataset(BaseDataset):
             if not image_list.exists():
                 raise FileNotFoundError(f"Cannot find image list {image_list}.")
             images = image_list.read_text().rstrip("\n").split("\n")
-            for image in images:
-                if not (image_dir / image).exists():
-                    raise FileNotFoundError(image_dir / image)
+            # for image in images:
+            #     if not (image_dir / image).exists():
+            #         raise FileNotFoundError(image_dir / image)
             logger.info("Found %d images in list file.", len(images))
         elif isinstance(conf.image_list, omegaconf.listconfig.ListConfig):
             images = conf.image_list.to_container()
@@ -158,7 +158,7 @@ class _Dataset(torch.utils.data.Dataset):
         self.image_names = np.array(image_names)
         self.image_dir = DATA_PATH / conf.data_dir / conf.image_dir
 
-        aug_conf = conf.photometric
+        aug_conf = conf.photometric # lg 0.75
         aug_name = aug_conf.name
         assert (
                 aug_name in augmentations.keys()
@@ -289,19 +289,32 @@ def visualize(args):
     loader = dataset.get_data_loader("train")
     logger.info("The dataset has %d elements.", len(loader))
 
+    # with fork_rng(seed=dataset.conf.seed):
+    #     images = []
+    #     for _, data in zip(range(args.num_items), loader):
+    #         images.append(
+    #             (data[f"view{i}"]["image"][0].permute(1, 2, 0) for i in range(2))
+    #         )
+    # plot_image_grid(images, dpi=args.dpi)
+
+    # -----------------------------------------------
     with fork_rng(seed=dataset.conf.seed):
         images = []
         for _, data in zip(range(args.num_items), loader):
-            images.append(
-                (data[f"view{i}"]["image"][0].permute(1, 2, 0) for i in range(2))
-            )
+            # Convert the generator to a list before appending it to images
+            image_list = [data[f"view{i}"]["image"][0].permute(1, 2, 0) for i in range(2)]
+            images.append(image_list)
+    print(len(image_list))
+    # Now call plot_image_grid with the list of images
     plot_image_grid(images, dpi=args.dpi)
+
+
     plt.tight_layout()
     plt.show()
 
 
 if __name__ == "__main__":
-    from .. import logger  # overwrite the logger
+    from gluefactory import logger  # overwrite the logger
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_items", type=int, default=8)
@@ -309,3 +322,9 @@ if __name__ == "__main__":
     parser.add_argument("dotlist", nargs="*")
     args = parser.parse_intermixed_args()
     visualize(args)
+    # from matplotlib import pyplot as plt
+    # import scipy as sp
+    #
+    # x = sp.linspace(0.4 * sp.pi, 10)
+    # plt.plot(x, sp.sin(x))
+    # plt.show()

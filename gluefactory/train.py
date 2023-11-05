@@ -21,14 +21,14 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from gluefactory import __module_name__, logger
-from datasets import get_dataset
-from eval import run_benchmark
-from models import get_model
-from settings import EVAL_PATH, TRAINING_PATH
-from utils.experiments import get_best_checkpoint, get_last_checkpoint, save_experiment
-from utils.stdout_capturing import capture_outputs
-from utils.tensor import batch_to_device
-from utils.tools import (
+from gluefactory.datasets import get_dataset
+from gluefactory.eval import run_benchmark
+from gluefactory.models import get_model
+from gluefactory.settings import EVAL_PATH, TRAINING_PATH
+from gluefactory.utils.experiments import get_best_checkpoint, get_last_checkpoint, save_experiment
+from gluefactory.utils.stdout_capturing import capture_outputs
+from gluefactory.utils.tensor import batch_to_device
+from gluefactory.utils.tools import (
     AverageMetric,
     MedianMetric,
     PRMetric,
@@ -87,7 +87,7 @@ def do_evaluation(model, loader, device, loss_fn, conf, pbar=True):
         n, plot_fn = conf.plot
         plot_ids = np.random.choice(len(loader), min(len(loader), n), replace=False)
     for i, data in enumerate(
-        tqdm(loader, desc="Evaluation", ascii=True, disable=not pbar)
+            tqdm(loader, desc="Evaluation", ascii=True, disable=not pbar)
     ):
         data = batch_to_device(data, device, non_blocking=True)
         with torch.no_grad():
@@ -255,7 +255,7 @@ def training(rank, conf, output_dir, args):
         device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Using device {device}")
 
-    dataset = get_dataset(data_conf.name)(data_conf)
+    dataset = get_dataset(data_conf.name)(data_conf)  # 只有路徑
 
     # Optionally load a different validation dataset than the training one
     val_data_conf = conf.get("data_val", None)
@@ -364,11 +364,7 @@ def training(rank, conf, output_dir, args):
             logger.info(f"Starting epoch {epoch}")
 
         # we first run the eval
-        if (
-            rank == 0
-            and epoch % conf.train.test_every_epoch == 0
-            and args.run_benchmarks
-        ):
+        if (rank == 0 and epoch % conf.train.test_every_epoch == 0 and args.run_benchmarks):
             for bname, eval_conf in conf.get("benchmarks", {}).items():
                 logger.info(f"Running eval on {bname}")
                 s, f, r = run_benchmark(
@@ -409,9 +405,7 @@ def training(rank, conf, output_dir, args):
                         conf.train.seed + epoch
                     )
         for it, data in enumerate(train_loader):
-            tot_it = (len(train_loader) * epoch + it) * (
-                args.n_gpus if args.distributed else 1
-            )
+            tot_it = (len(train_loader) * epoch + it) * (args.n_gpus if args.distributed else 1)
             tot_n_samples = tot_it
             if not args.log_it:
                 # We normalize the x-axis of tensorflow to num samples!
@@ -425,6 +419,8 @@ def training(rank, conf, output_dir, args):
                 pred = model(data)
                 losses, _ = loss_fn(pred, data)
                 loss = torch.mean(losses["total"])
+
+
             if torch.isnan(loss).any():
                 print(f"Detected NAN, skipping iteration {it}")
                 del pred, data, loss, losses
@@ -439,6 +435,8 @@ def training(rank, conf, output_dir, args):
                 do_backward = do_backward > 0
             if do_backward:
                 scaler.scale(loss).backward()
+
+                # 检查是否有参数没有梯度但又要求计算梯度
                 if args.detect_anomaly:
                     # Check for params without any gradient which causes
                     # problems in distributed training with checkpointing
@@ -449,6 +447,8 @@ def training(rank, conf, output_dir, args):
                             detected_anomaly = True
                     if detected_anomaly:
                         raise RuntimeError("Detected anomaly in training.")
+
+                # 在训练过程中执行梯度裁剪，以防止梯度爆炸问题，并在梯度裁剪时处理可能出现的异常情况。这是混合精度训练中的一个重要步骤
                 if conf.train.get("clip_grad", None):
                     scaler.unscale_(optimizer)
                     try:
@@ -464,14 +464,22 @@ def training(rank, conf, output_dir, args):
                 else:
                     scaler.step(optimizer)
                     scaler.update()
+
+                # 更新学习率
                 if not conf.train.lr_schedule.on_epoch:
                     lr_scheduler.step()
             else:
                 if rank == 0:
                     logger.warning(f"Skip iteration {it} due to detach.")
 
+
+
+
             if args.profile:
                 prof.step()
+
+
+
 
             if it % conf.train.log_every_iter == 0:
                 for k in sorted(losses.keys()):
@@ -511,13 +519,9 @@ def training(rank, conf, output_dir, args):
             del pred, data, loss, losses
 
             # Run validation
-            if (
-                (
-                    it % conf.train.eval_every_iter == 0
-                    and (it > 0 or epoch == -int(args.no_eval_0))
-                )
-                or stop
-                or it == (len(train_loader) - 1)
+            if ((it % conf.train.eval_every_iter == 0 and (it > 0 or epoch == -int(args.no_eval_0)))
+                    or stop
+                    or it == (len(train_loader) - 1)
             ):
                 with fork_rng(seed=conf.train.seed):
                     results, pr_metrics, figures = do_evaluation(
@@ -633,7 +637,7 @@ def main_worker(rank, conf, output_dir, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("experiment", type=str)
-    parser.add_argument("--conf", type=str) # 配置文件
+    parser.add_argument("--conf", type=str)  # 配置文件
     parser.add_argument(
         "--mixed_precision",
         "--mp",
@@ -671,7 +675,7 @@ if __name__ == "__main__":
         conf = OmegaConf.merge(restore_conf, conf)
     if not args.restore:
         if conf.train.seed is None:
-            conf.train.seed = torch.initial_seed() & (2**32 - 1)
+            conf.train.seed = torch.initial_seed() & (2 ** 32 - 1)
         OmegaConf.save(conf, str(output_dir / "config.yaml"))
 
     # copy gluefactory and submodule into output dir

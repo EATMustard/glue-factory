@@ -151,7 +151,7 @@ def gt_matches_from_homography(kp0, kp1, H, pos_th=3, neg_th=6, **kw):
 
     return {
         "assignment": positive,
-        "reward": reward,
+        "reward": reward,   # 仅仅 -1 1
         "matches0": m0,
         "matches1": m1,
         "matching_scores0": (m0 > -1).float(),

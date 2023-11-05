@@ -404,7 +404,7 @@ class LightGlue(nn.Module):
         for key in self.required_data_keys:
             assert key in data, f"Missing key {key} in data"
 
-        kpts0, kpts1 = data["keypoints0"], data["keypoints1"]
+        kpts0, kpts1 = data["keypoints0"], data["keypoints2"]
         b, m, _ = kpts0.shape # 16 512
         b, n, _ = kpts1.shape
         device = kpts0.device
@@ -435,7 +435,7 @@ class LightGlue(nn.Module):
             )
 
         desc0 = data["descriptors0"].contiguous()   # 16,512,256
-        desc1 = data["descriptors1"].contiguous()
+        desc1 = data["descriptors2"].contiguous()
 
         assert desc0.shape[-1] == self.conf.input_dim
         assert desc1.shape[-1] == self.conf.input_dim

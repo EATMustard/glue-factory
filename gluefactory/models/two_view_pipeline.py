@@ -72,6 +72,7 @@ class TwoViewPipeline(BaseModel):
     def _forward(self, data):
         pred0 = self.extract_view(data, "0")
         pred1 = self.extract_view(data, "1")
+        # 组合
         pred = {
             **{k + "0": v for k, v in pred0.items()},
             **{k + "1": v for k, v in pred1.items()},
@@ -84,7 +85,7 @@ class TwoViewPipeline(BaseModel):
         if self.conf.solver.name:
             pred = {**pred, **self.solver({**data, **pred})}
 
-        if self.conf.ground_truth.name and self.conf.run_gt_in_forward:
+        if self.conf.ground_truth.name and self.conf.run_gt_in_forward: # false
             gt_pred = self.ground_truth({**data, **pred})
             pred.update({f"gt_{k}": v for k, v in gt_pred.items()})
         return pred

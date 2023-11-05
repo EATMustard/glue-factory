@@ -54,7 +54,7 @@ class TripletPipeline(TwoViewPipeline):
             return pred
 
         if self.conf.batch_triplets:
-            B = data["image1"].shape[0]
+            B = data["view0"]['image'].shape[0]
             # stack on batch dimension
             m_data = stack_twoviews(data)
             m_pred = stack_twoviews(pred)

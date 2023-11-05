@@ -4,14 +4,15 @@ data:
     train_size: 150000
     val_size: 2000
     batch_size: 16
-    num_workers: 14
+    num_workers: 6
+    triplet: True
     homography:
         difficulty: 0.7
         max_angle: 45
     photometric:
         name: lg
 model:
-    name: two_view_pipeline
+    name: friends_triplet_pipeline
     extractor:
         name: extractors.superpoint_open
         max_num_keypoints: 512

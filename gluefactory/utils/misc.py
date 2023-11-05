@@ -26,7 +26,7 @@ def get_twoview(data, idx):
     return {**data_lr, **data_rl, **data_l, **data_r}
 
 
-def stack_twoviews(data, indices=["0to1", "0to2", "1to2"]):
+def stack_twoviews(data, indices=["H_0to1", "H_0to2", "H_1to2"]):
     idx0 = indices[0]
     m_data = data[idx0] if idx0 in data else get_twoview(data, idx0)
     # stack on dim=0

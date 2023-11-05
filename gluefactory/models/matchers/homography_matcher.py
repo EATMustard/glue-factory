@@ -35,11 +35,19 @@ class HomographyMatcher(BaseModel):
 
     def _forward(self, data):
         result = {}
+
+        index = data["view_idx"] if "view_idx" in data else [0, 1]
+
+        # 根据索引获取所需的内容
+        kp0 = data["keypoints{}".format(index[0])]
+        kp1 = data["keypoints{}".format(index[1])]
+        H = data["H_{}to{}".format(index[0],index[1])]
+
         if self.conf.use_points:
             result = gt_matches_from_homography(
-                data["keypoints0"],
-                data["keypoints1"],
-                data["H_0to1"],
+                kp0,
+                kp1,
+                H,
                 pos_th=self.conf.th_positive,
                 neg_th=self.conf.th_negative,
             )

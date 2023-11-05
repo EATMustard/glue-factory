@@ -3,8 +3,8 @@ import torch
 
 @torch.no_grad()
 def matcher_metrics(pred, data, prefix="", prefix_gt=None):
-    def recall(m, gt_m):
-        mask = (gt_m > -1).float()
+    def recall(m, gt_m):    # 16,512
+        mask = (gt_m > -1).float()  # 16,512
         return ((m == gt_m) * mask).sum(1) / (1e-8 + mask.sum(1))
 
     def accuracy(m, gt_m):
@@ -31,11 +31,11 @@ def matcher_metrics(pred, data, prefix="", prefix_gt=None):
         r_pts_diff = r_pts[..., 1:] - r_pts[..., :-1]
         return torch.sum(r_pts_diff * p_pts[:, None, -1], dim=-1)
 
-    if prefix_gt is None:
+    if prefix_gt is None:   # True
         prefix_gt = prefix
     rec = recall(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0"])
     prec = precision(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0"])
-    acc = accuracy(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0"])
+    acc = accuracy(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0"]) # 16,1
     ap = ranking_ap(
         pred[f"{prefix}matches0"],
         data[f"gt_{prefix_gt}matches0"],

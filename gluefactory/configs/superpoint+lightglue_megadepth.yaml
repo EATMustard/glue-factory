@@ -13,7 +13,7 @@ data:
     num_overlap_bins: 3
     read_depth: true
     read_image: true
-    batch_size: 32
+    batch_size: 12
     num_workers: 14
     load_features:
         do: false  # enable this if you have cached predictions
