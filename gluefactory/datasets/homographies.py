@@ -283,6 +283,7 @@ def visualize(args):
         "batch_size": 1,
         "num_workers": 1,
         "prefetch_factor": 1,
+        "triplet": True
     }
     conf = OmegaConf.merge(conf, OmegaConf.from_cli(args.dotlist))
     dataset = HomographyDataset(conf)
@@ -298,19 +299,19 @@ def visualize(args):
     # plot_image_grid(images, dpi=args.dpi)
 
     # -----------------------------------------------
-    with fork_rng(seed=dataset.conf.seed):
-        images = []
-        for _, data in zip(range(args.num_items), loader):
-            # Convert the generator to a list before appending it to images
-            image_list = [data[f"view{i}"]["image"][0].permute(1, 2, 0) for i in range(2)]
-            images.append(image_list)
-    print(len(image_list))
+    # with fork_rng(seed=dataset.conf.seed):
+    images = []
+    for _, data in zip(range(args.num_items), loader):
+        # Convert the generator to a list before appending it to images
+        image_list = [data[f"view{i}"]["image"][0].permute(1, 2, 0) for i in range(3)]
+        # permute: 将通道顺序从 (H, W, C) 转换为 (C, H, W)
+        images.append(image_list)
     # Now call plot_image_grid with the list of images
     plot_image_grid(images, dpi=args.dpi)
 
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig()
 
 
 if __name__ == "__main__":

@@ -405,6 +405,7 @@ def training(rank, conf, output_dir, args):
                         conf.train.seed + epoch
                     )
         for it, data in enumerate(train_loader):
+            print(it)
             tot_it = (len(train_loader) * epoch + it) * (args.n_gpus if args.distributed else 1)
             tot_n_samples = tot_it
             if not args.log_it:

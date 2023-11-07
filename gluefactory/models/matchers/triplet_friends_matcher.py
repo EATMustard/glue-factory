@@ -276,7 +276,7 @@ class TransformerLayer(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
-        self.self_attn_concat = SelfBlock(*args, **kwargs, concat=True)
+        # self.self_attn_concat = SelfBlock(*args, **kwargs, concat=True)
 
         self.mlp = MLP(*args, **kwargs)
         self.unidirectional_cross_attn = UnidirectionalCrossBlock(*args, **kwargs)
@@ -296,17 +296,26 @@ class TransformerLayer(nn.Module):
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
         else:
             dim = desc0.shape[2]
-            # concat
-            desc_concat = torch.cat((desc0, help_desc), dim=2)
-            desc_concat = self.self_attn_concat(desc_concat, encoding0)
+            desc0 = self.self_attn(desc1, encoding0)
             desc1 = self.self_attn(desc1, encoding1)
-
-            desc_reduction = self.mlp(desc_concat)  # 降维
-            desc_concat = desc_concat[:, :, -dim:]  # 取后dim维
-            desc_concat = self.unidirectional_cross_attn(desc_concat, desc1)
-
+            help_desc = self.self_attn(help_desc, encoding0)
+            desc_concat = torch.cat((desc0, help_desc), dim=2)
+            help_desc = self.unidirectional_cross_attn(help_desc, desc1)
+            desc_reduction = self.mlp(desc_concat)
             desc_reduction, desc1 = self.cross_attn(desc_reduction, desc1)
-            return desc_reduction, desc1, desc_concat
+            return desc_reduction, desc1, help_desc
+
+            # # concat
+            # desc_concat = torch.cat((desc0, help_desc), dim=2)
+            # desc_concat = self.self_attn_concat(desc_concat, encoding0)
+            # desc1 = self.self_attn(desc1, encoding1)
+            #
+            # desc_reduction = self.mlp(desc_concat)  # 降维
+            # desc_concat = desc_concat[:, :, -dim:]  # 取后dim维
+            # desc_concat = self.unidirectional_cross_attn(desc_concat, desc1)
+            #
+            # desc_reduction, desc1 = self.cross_attn(desc_reduction, desc1)
+            # return desc_reduction, desc1, desc_concat
 
     # This part is compiled and allows padding inputs
     def masked_forward(self, desc0, desc1, encoding0, encoding1, mask0, mask1):
@@ -411,7 +420,7 @@ class TripletFriendsMatcher(nn.Module):
 
         head_dim = conf.descriptor_dim // conf.num_heads
         self.posenc0 = LearnableFourierPositionalEncoding(
-            2 + 2 * conf.add_scale_ori, head_dim, head_dim, concat=True
+            2 + 2 * conf.add_scale_ori, head_dim, head_dim
         )
         self.posenc1 = LearnableFourierPositionalEncoding(
             2 + 2 * conf.add_scale_ori, head_dim, head_dim
