@@ -21,13 +21,13 @@ def has_triplet(data):
 
 
 class FriendsTripletPipeline(TwoViewPipeline):
-    default_conf = {**TwoViewPipeline.default_conf}
+    default_conf = {"help_view": 1, **TwoViewPipeline.default_conf}
 
-    def create_help_descritors(self, pred):
+    def create_help_descritors(self, pred, gt_views_index):
         """处理函数，生成视图对齐的辅助描述符"""
         help_descriptors = pred["descriptors0"].clone()
-        index = pred["gt_matches0_0_1"]
-        B_descriptors = pred["descriptors1"]
+        index = pred[f"gt_{gt_views_index[0]}_{gt_views_index[1]}_matches0"]
+        B_descriptors = pred[f"descriptors{gt_views_index[1]}"]
 
         for b in range(0, index.shape[0]):
             for i in range(0, index.shape[1]):
@@ -53,15 +53,24 @@ class FriendsTripletPipeline(TwoViewPipeline):
         }
 
         # 获取两视图的匹配真值
-        gt_views_idx = [0, 1]
-        if self.conf.ground_truth.name:
-            gt_pred = self.ground_truth({**data, **pred, "view_idx": gt_views_idx})
-            pred.update({f"gt_{k}_{gt_views_idx[0]}_{gt_views_idx[1]}": v for k, v in gt_pred.items()})
 
-        pred = self.create_help_descritors(pred)
+        if self.conf.help_view == 1:
+            gt_views_idx = [0, 1]  # train match 0-2
+            match_idx = [0, 2]
+        else:
+            gt_views_idx = [0, 2]
+            match_idx = [0, 1]
+
+        pred.update({"view_idx": match_idx})
+
+        if self.conf.ground_truth.name:
+            gt_pred = self.ground_truth({**data, **pred})
+            pred.update({f"gt_{gt_views_idx[0]}_{gt_views_idx[1]}_{k}": v for k, v in gt_pred.items()})
+
+        pred = self.create_help_descritors(pred, gt_views_idx)
 
         if self.conf.matcher.name:
-            pred = {**pred, **self.matcher({**data, **pred})}
+            pred = {**pred, **self.matcher({**data, **pred, "help_view": self.conf.help_view})}
         if self.conf.filter.name:
             pred = {**pred, **self.filter({**data, **pred})}
         if self.conf.solver.name:
@@ -76,10 +85,13 @@ class FriendsTripletPipeline(TwoViewPipeline):
         total = 0
 
         # get labels
-        gt_views_idx = [0, 2]
+        if self.conf.help_view == 1:
+            gt_views_idx = [0, 2]  # train match 0-2
+        else:
+            gt_views_idx = [0, 1]
         if self.conf.ground_truth.name and not self.conf.run_gt_in_forward:
             gt_pred = self.ground_truth({**data, **pred, "view_idx": gt_views_idx})
-            pred.update({f"gt_{k}_{gt_views_idx[0]}_{gt_views_idx[1]}": v for k, v in gt_pred.items()})
+            pred.update({f"gt_{k}": v for k, v in gt_pred.items()})
 
         for k in self.components:
             apply = True

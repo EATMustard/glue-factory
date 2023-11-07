@@ -330,7 +330,7 @@ class LightGlue(nn.Module):
         },
     }
 
-    required_data_keys = ["keypoints0", "keypoints1", "descriptors0", "descriptors1", "help_descriptors"]
+    required_data_keys = ["keypoints0", "keypoints1", "descriptors0", "descriptors1"]
 
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 

@@ -6,21 +6,28 @@ from .viz2d import cm_RdGn, plot_heatmaps, plot_image_grid, plot_keypoints, plot
 
 def make_match_figures(pred_, data_, n_pairs=2):
     # print first n pairs in batch
-    if "0to1" in pred_.keys():
-        pred_ = pred_["0to1"]
     images, kpts, matches, mcolors = [], [], [], []
     heatmaps = []
+
+    if "view_idx" in pred_:
+        view_index = pred_["view_idx"]
+        pred_.pop("view_idx")
+
     pred = batch_to_device(pred_, "cpu", non_blocking=False)
     data = batch_to_device(data_, "cpu", non_blocking=False)
 
-    view0, view1 = data["view0"], data["view2"]
+    if "view2" in data and view_index == [0, 2]:
+        view0, view1 = data["view0"], data["view2"]
+        kp0, kp1 = pred["keypoints0"], pred["keypoints2"]
+    else:
+        view0, view1 = data["view0"], data["view1"]
+        kp0, kp1 = pred["keypoints0"], pred["keypoints1"]
 
     n_pairs = min(n_pairs, view0["image"].shape[0])
     assert view0["image"].shape[0] >= n_pairs
 
-    kp0, kp1 = pred["keypoints0"], pred["keypoints2"]
     m0 = pred["matches0"]
-    gtm0 = pred["gt_matches0_0_2"]
+    gtm0 = pred["gt_matches0"]
 
     for i in range(n_pairs):
         valid = (m0[i] > -1) & (gtm0[i] >= -1)

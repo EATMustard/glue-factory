@@ -152,7 +152,7 @@ class BaseDataset(metaclass=ABCMeta):
         """To be implemented by the child class."""
         raise NotImplementedError
 
-    def get_data_loader(self, split, shuffle=None, pinned=False, distributed=False):
+    def get_data_loader(self, split, shuffle=None, pinned=True, distributed=False):
         """Return a data loader for a given split."""
         assert split in ["train", "val", "test"]
         dataset = self.get_dataset(split)

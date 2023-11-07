@@ -60,10 +60,10 @@ class NLLLoss(nn.Module):
         )
 
     def nll_loss(self, log_assignment, data):
-        m, n = data["gt_matches0_0_2"].size(-1), data["gt_matches1_0_2"].size(-1)   # 512,512
-        positive = data["gt_assignment_0_2"].float()    # 16,512,512
-        neg0 = (data["gt_matches0_0_2"] == -1).float()  # 16,512    1的是没有匹配的特征点 0 是有匹配的
-        neg1 = (data["gt_matches1_0_2"] == -1).float()  # 16,512
+        m, n = data["gt_matches0"].size(-1), data["gt_matches1"].size(-1)   # 512,512
+        positive = data["gt_assignment"].float()    # 16,512,512
+        neg0 = (data["gt_matches0"] == -1).float()  # 16,512    1的是没有匹配的特征点 0 是有匹配的
+        neg1 = (data["gt_matches1"] == -1).float()  # 16,512
 
         weights = torch.zeros_like(log_assignment)  # 16,513，513
         weights[:, :m, :n] = positive   # 前512行512列

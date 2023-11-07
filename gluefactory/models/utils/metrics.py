@@ -33,12 +33,12 @@ def matcher_metrics(pred, data, prefix="", prefix_gt=None):
 
     if prefix_gt is None:   # True
         prefix_gt = prefix
-    rec = recall(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0_0_2"])
-    prec = precision(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0_0_2"])
-    acc = accuracy(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0_0_2"]) # 16,1
+    rec = recall(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0"])
+    prec = precision(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0"])
+    acc = accuracy(pred[f"{prefix}matches0"], data[f"gt_{prefix_gt}matches0"]) # 16,1
     ap = ranking_ap(
         pred[f"{prefix}matches0"],
-        data[f"gt_{prefix_gt}matches0_0_2"],
+        data[f"gt_{prefix_gt}matches0"],
         pred[f"{prefix}matching_scores0"],
     )
     metrics = {

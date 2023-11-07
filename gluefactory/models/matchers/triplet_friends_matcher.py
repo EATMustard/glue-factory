@@ -48,7 +48,7 @@ def apply_cached_rotary_emb(freqs: torch.Tensor, t: torch.Tensor) -> torch.Tenso
 
 
 class LearnableFourierPositionalEncoding(nn.Module):
-    def __init__(self, M: int, dim: int, F_dim: int = None, gamma: float = 1.0, concat = False) -> None:
+    def __init__(self, M: int, dim: int, F_dim: int = None, gamma: float = 1.0, concat=False) -> None:
         super().__init__()
         F_dim = F_dim if F_dim is not None else dim
         if concat == True:
@@ -157,9 +157,9 @@ class SelfBlock(nn.Module):
             mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         qkv = self.Wqkv(x)  # 16，512, 1536
-        qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)    #16, 4, 512, 128, 3
-        q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2] # 16,4,512,128  encoding: 2 16 1 512 64
-        q = apply_cached_rotary_emb(encoding, q)    # 16,4,512,64
+        qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)  # 16, 4, 512, 128, 3
+        q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2]  # 16,4,512,128  encoding: 2 16 1 512 64
+        q = apply_cached_rotary_emb(encoding, q)  # 16,4,512,64
         k = apply_cached_rotary_emb(encoding, k)
         context = self.inner_attn(q, k, v, mask=mask)
         message = self.out_proj(context.transpose(1, 2).flatten(start_dim=-2))
@@ -192,14 +192,13 @@ class UnidirectionalCrossBlock(nn.Module):
             desc1: torch.Tensor
     ) -> torch.Tensor:
         q = self.Wq(desc0)
-        kv = self.Wkv(desc1)    # 16,512,512
+        kv = self.Wkv(desc1)  # 16,512,512
         q = q.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
         kv = kv.unflatten(-1, (self.num_heads, -1, 2)).transpose(1, 2)
         k, v = kv[..., 0], kv[..., 1]
         context = self.inner_attn(q, k, v)
         message = self.out_proj(context.transpose(1, 2).flatten(start_dim=-2))
         return desc0 + self.ffn(torch.cat([desc0, message], -1))
-
 
 
 class CrossBlock(nn.Module):
@@ -302,8 +301,8 @@ class TransformerLayer(nn.Module):
             desc_concat = self.self_attn_concat(desc_concat, encoding0)
             desc1 = self.self_attn(desc1, encoding1)
 
-            desc_reduction = self.mlp(desc_concat)   # 降维
-            desc_concat = desc_concat[:, :, -dim:]   # 取后dim维
+            desc_reduction = self.mlp(desc_concat)  # 降维
+            desc_concat = desc_concat[:, :, -dim:]  # 取后dim维
             desc_concat = self.unidirectional_cross_attn(desc_concat, desc1)
 
             desc_reduction, desc1 = self.cross_attn(desc_reduction, desc1)
@@ -412,7 +411,7 @@ class TripletFriendsMatcher(nn.Module):
 
         head_dim = conf.descriptor_dim // conf.num_heads
         self.posenc0 = LearnableFourierPositionalEncoding(
-            2 + 2 * conf.add_scale_ori, head_dim, head_dim, concat = True
+            2 + 2 * conf.add_scale_ori, head_dim, head_dim, concat=True
         )
         self.posenc1 = LearnableFourierPositionalEncoding(
             2 + 2 * conf.add_scale_ori, head_dim, head_dim
@@ -474,14 +473,17 @@ class TripletFriendsMatcher(nn.Module):
     def forward(self, data: dict) -> dict:
         for key in self.required_data_keys:
             assert key in data, f"Missing key {key} in data"
-
-        kpts0, kpts1 = data["keypoints0"], data["keypoints2"]
+        if data["help_view"] == 1:
+            match_view = [0, 2]
+        else:
+            match_view = [0, 1]
+        kpts0, kpts1 = data[f"keypoints{match_view[0]}"], data[f"keypoints{match_view[1]}"]
         b, m, _ = kpts0.shape  # 16 512
         b, n, _ = kpts1.shape
         device = kpts0.device
         if "view0" in data.keys() and "view2" in data.keys():
-            size0 = data["view0"].get("image_size")  # 640 480
-            size1 = data["view2"].get("image_size")
+            size0 = data[f"view{match_view[0]}"].get("image_size")  # 640 480
+            size1 = data[f"view{match_view[1]}"].get("image_size")
         kpts0 = normalize_keypoints(kpts0, size0).clone()  # 16，512，2
         kpts1 = normalize_keypoints(kpts1, size1).clone()
 
@@ -505,8 +507,8 @@ class TripletFriendsMatcher(nn.Module):
                 -1,
             )
 
-        desc0 = data["descriptors0"].contiguous()  # 16,512,256
-        desc1 = data["descriptors2"].contiguous()
+        desc0 = data[f"descriptors{match_view[0]}"].contiguous()  # 16,512,256
+        desc1 = data[f"descriptors{match_view[1]}"].contiguous()
 
         help_desc = data["help_descriptors"].contiguous()
 
@@ -655,7 +657,8 @@ class TripletFriendsMatcher(nn.Module):
             losses["confidence"] = 0.0
 
         # B = pred['log_assignment'].shape[0]
-        losses["row_norm"] = pred["log_assignment"].exp()[:, :-1].sum(2).mean(1)  # 16    计算每行分配矩阵和的均值（每个特征点对应的另一个特征点的对应距离加起来，再对点数求平均）
+        losses["row_norm"] = pred["log_assignment"].exp()[:, :-1].sum(2).mean(
+            1)  # 16    计算每行分配矩阵和的均值（每个特征点对应的另一个特征点的对应距离加起来，再对点数求平均）
         for i in range(N - 1):  # 是计算第二步的，confidence    8个中间损失
             params_i = loss_params(pred, i)
             nll, _, _ = self.loss_fn(params_i, data, weights=gt_weights)  # 第i层的nll

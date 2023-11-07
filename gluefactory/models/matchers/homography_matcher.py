@@ -18,20 +18,8 @@ class HomographyMatcher(BaseModel):
         "overlap_th": 0.2,
         "min_visibility_th": 0.5,
     }
-
-    required_data_keys = ["H_0to1"]
-
     def _init(self, conf):
-        # TODO (iago): Is this just boilerplate code?
-        if self.conf.use_points:
-            self.required_data_keys += ["keypoints0", "keypoints1"]
-        if self.conf.use_lines:
-            self.required_data_keys += [
-                "lines0",
-                "lines1",
-                "valid_lines0",
-                "valid_lines1",
-            ]
+        pass
 
     def _forward(self, data):
         result = {}
