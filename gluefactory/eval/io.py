@@ -35,7 +35,8 @@ def parse_config_path(name_or_path: Optional[str], defaults: str) -> Path:
 def extract_benchmark_conf(conf, benchmark):
     mconf = OmegaConf.create(
         {
-            "model": conf.get("model", {}),
+            "model_2views": conf.get("model_2views", {}),
+            "model": conf.get("model", {})
         }
     )
     if "benchmarks" in conf.keys():
@@ -84,6 +85,57 @@ def parse_eval_args(benchmark, args, configs_path, default=None):
     return name, conf
 
 
+def friends_parse_eval_args(benchmark, args, configs_path, default=None):
+    conf = {"data": {}, "model_2views": {}, "model":{}, "eval": {}}
+    if args.conf:
+        conf_path = parse_config_path(args.conf, configs_path)
+        custom_conf = OmegaConf.load(conf_path)
+        conf = extract_benchmark_conf(OmegaConf.merge(conf, custom_conf), benchmark)
+        args.tag = (
+            args.tag if args.tag is not None else conf_path.name.replace(".yaml", "")
+        )
+
+    cli_conf = OmegaConf.from_cli(args.dotlist)
+    conf = OmegaConf.merge(conf, cli_conf)
+    conf.checkpoint = args.checkpoint if args.checkpoint else conf.get("checkpoint")
+    conf.checkpoint_2views = args.checkpoint_2views if args.checkpoint_2views else None
+
+
+    if conf.checkpoint and not conf.checkpoint.endswith(".tar"):
+        checkpoint_conf = OmegaConf.load(
+            TRAINING_PATH / conf.checkpoint / "config.yaml"
+        )
+        conf = OmegaConf.merge(extract_benchmark_conf(checkpoint_conf, benchmark), conf)
+
+    if conf.checkpoint_2views and not conf.checkpoint_2views.endswith(".tar"):
+        checkpoint_conf = OmegaConf.load(
+            TRAINING_PATH / conf.checkpoint_2views / "config.yaml"
+        )
+        checkpoint_conf = {('model_2views' if key == 'model' else key): value for key, value in checkpoint_conf.items()}
+        checkpoint_conf = OmegaConf.create(checkpoint_conf)
+        conf = OmegaConf.merge(extract_benchmark_conf(checkpoint_conf, benchmark), conf)
+
+    if default:
+        conf = OmegaConf.merge(default, conf)
+
+    if args.tag is not None:
+        name = args.tag
+    elif args.conf and conf.checkpoint:
+        name = f"{args.conf}_{conf.checkpoint}"
+    elif args.conf:
+        name = args.conf
+    elif conf.checkpoint:
+        name = conf.checkpoint
+    if len(args.dotlist) > 0 and not args.tag:
+        name = name + "_" + ":".join(args.dotlist)
+    print("Running benchmark:", benchmark)
+    print("Experiment tag:", name)
+    print("Config:")
+    pprint(OmegaConf.to_container(conf))
+    return name, conf
+
+
+
 def load_model(model_conf, checkpoint):
     if checkpoint:
         model = load_experiment(checkpoint, conf=model_conf).eval()
@@ -106,4 +158,5 @@ def get_eval_parser():
     parser.add_argument("--overwrite_eval", action="store_true")
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("dotlist", nargs="*")
+    parser.add_argument("--checkpoint_2views", type=str, default=None)
     return parser

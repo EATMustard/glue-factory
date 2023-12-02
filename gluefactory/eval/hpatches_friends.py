@@ -12,21 +12,21 @@ from tqdm import tqdm
 from gluefactory.datasets import get_dataset
 from gluefactory.models.cache_loader import CacheLoader
 from gluefactory.settings import EVAL_PATH
-from gluefactory.utils.export_predictions import export_predictions
+from gluefactory.utils.export_predictions import export_predictions, friends_export_predictions
 from gluefactory.utils.tensor import map_tensor
 from gluefactory.utils.tools import AUCMetric
 from gluefactory.visualization.viz2d import plot_cumulative
 from gluefactory.eval.eval_pipeline import EvalPipeline
-from gluefactory.eval.io import get_eval_parser, load_model, parse_eval_args
+from gluefactory.eval.io import get_eval_parser, load_model, parse_eval_args, friends_parse_eval_args
 from gluefactory.eval.utils import (
     eval_homography_dlt,
     eval_homography_robust,
     eval_matches_homography,
-    eval_poses,
+    eval_poses, eval_matches_homography_friends, eval_homography_dlt_friends, eval_homography_robust_friends,
 )
 
 
-class HPatchesPipeline(EvalPipeline):
+class HPatchesFriendsPipeline(EvalPipeline):
     default_conf = {
         "data": {
             "triplet": True,
@@ -37,6 +37,11 @@ class HPatchesPipeline(EvalPipeline):
                 "resize": 480,  # we also resize during eval to have comparable metrics
                 "side": "short",
             },
+        },
+        "model_2views": {
+            "ground_truth": {
+                "name": None,  # remove gt matches
+            }
         },
         "model": {
             "ground_truth": {
@@ -50,9 +55,9 @@ class HPatchesPipeline(EvalPipeline):
     }
     export_keys = [
         "keypoints0",
-        "keypoints1",
+        "keypoints2",
         "keypoint_scores0",
-        "keypoint_scores1",
+        "keypoint_scores2",
         "matches0",
         "matches1",
         "matching_scores0",
@@ -84,10 +89,14 @@ class HPatchesPipeline(EvalPipeline):
         if not pred_file.exists() or overwrite:
             if model is None:
                 model = load_model(self.conf.model, self.conf.checkpoint)
+            model_2views = None
+            if model_2views is None:
+                model_2views = load_model(self.conf.model_2views, self.conf.checkpoint_2views)
 
-            export_predictions(
+            friends_export_predictions(
                 self.get_dataloader(self.conf.data),
                 model,
+                model_2views,
                 pred_file,
                 keys=self.export_keys,
                 optional_keys=self.optional_export_keys,
@@ -113,12 +122,12 @@ class HPatchesPipeline(EvalPipeline):
             data = map_tensor(data, lambda t: torch.squeeze(t, dim=0))
             # add custom evaluations here
             if "keypoints0" in pred:
-                results_i = eval_matches_homography(data, pred)
-                results_i = {**results_i, **eval_homography_dlt(data, pred)}
+                results_i = eval_matches_homography_friends(data, pred)
+                results_i = {**results_i, **eval_homography_dlt_friends(data, pred)}
             else:
                 results_i = {}
             for th in test_thresholds:
-                pose_results_i = eval_homography_robust(
+                pose_results_i = eval_homography_robust_friends(
                     data,
                     pred,
                     {"estimator": conf.estimator, "ransac_th": th},
@@ -172,17 +181,17 @@ class HPatchesPipeline(EvalPipeline):
 
 
 if __name__ == "__main__":
-    dataset_name = Path(__file__).stem
+    dataset_name = "hpatches"
     parser = get_eval_parser()
     args = parser.parse_intermixed_args()
 
-    default_conf = OmegaConf.create(HPatchesPipeline.default_conf)
+    default_conf = OmegaConf.create(HPatchesFriendsPipeline.default_conf)
 
     # mingle paths
     output_dir = Path(EVAL_PATH, dataset_name)
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    name, conf = parse_eval_args(
+    name, conf = friends_parse_eval_args(
         dataset_name,
         args,
         "configs/",
@@ -192,7 +201,7 @@ if __name__ == "__main__":
     experiment_dir = output_dir / name
     experiment_dir.mkdir(exist_ok=True)
 
-    pipeline = HPatchesPipeline(conf)
+    pipeline = HPatchesFriendsPipeline(conf)
     s, f, r = pipeline.run(
         experiment_dir, overwrite=args.overwrite, overwrite_eval=args.overwrite_eval
     )

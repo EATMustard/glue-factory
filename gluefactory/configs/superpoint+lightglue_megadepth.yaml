@@ -13,8 +13,8 @@ data:
     num_overlap_bins: 3
     read_depth: true
     read_image: true
-    batch_size: 12
-    num_workers: 14
+    batch_size: 64
+    num_workers: 16
     load_features:
         do: false  # enable this if you have cached predictions
         path: exports/megadepth-undist-depth-r1024_SP-k2048-nms3/{scene}.h5
@@ -44,7 +44,7 @@ train:
     seed: 0
     epochs: 50
     log_every_iter: 100
-    eval_every_iter: 1000
+    eval_every_iter: 5000
     lr: 1e-4
     lr_schedule:
         start: 30

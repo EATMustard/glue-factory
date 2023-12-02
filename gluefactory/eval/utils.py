@@ -91,6 +91,29 @@ def eval_matches_homography(data: dict, pred: dict) -> dict:
     return results
 
 
+
+
+def eval_matches_homography_friends(data: dict, pred: dict) -> dict:
+    check_keys_recursive(data, ["H_0to2"])
+    check_keys_recursive(
+        pred, ["keypoints0", "keypoints2", "matches0", "matching_scores0"]
+    )
+
+    H_gt = data["H_0to2"]
+    if H_gt.ndim > 2:
+        return eval_per_batch_item(data, pred, eval_matches_homography)
+
+    kp0, kp1 = pred["keypoints0"], pred["keypoints2"]
+    m0, scores0 = pred["matches0"], pred["matching_scores0"]
+    pts0, pts1, scores = get_matches_scores(kp0, kp1, m0, scores0)
+    err = sym_homography_error(pts0, pts1, H_gt)
+    results = {}
+    results["prec@1px"] = (err < 1).float().mean().nan_to_num().item()
+    results["prec@3px"] = (err < 3).float().mean().nan_to_num().item()
+    results["num_matches"] = pts0.shape[0]
+    results["num_keypoints"] = (kp0.shape[0] + kp1.shape[0]) / 2.0
+    return results
+
 def eval_relative_pose_robust(data, pred, conf):
     check_keys_recursive(data, ["view0", "view1", "T_0to1"])
     check_keys_recursive(
@@ -110,6 +133,43 @@ def eval_relative_pose_robust(data, pred, conf):
         "m_kpts1": pts1,
         "camera0": data["view0"]["camera"][0],
         "camera1": data["view1"]["camera"][0],
+    }
+    est = estimator(data_)
+
+    if not est["success"]:
+        results["rel_pose_error"] = float("inf")
+        results["ransac_inl"] = 0
+        results["ransac_inl%"] = 0
+    else:
+        # R, t, inl = ret
+        M = est["M_0to1"]
+        inl = est["inliers"].numpy()
+        t_error, r_error = relative_pose_error(T_gt, M.R, M.t)
+        results["rel_pose_error"] = max(r_error, t_error)
+        results["ransac_inl"] = np.sum(inl)
+        results["ransac_inl%"] = np.mean(inl)
+
+    return results
+
+def eval_relative_pose_robust_friends(data, pred, conf):
+    check_keys_recursive(data, ["view0", "view2", "T_0to1"])
+    check_keys_recursive(
+        pred, ["keypoints0", "keypoints2", "matches0", "matching_scores0"]
+    )
+
+    T_gt = data["T_0to1"]
+    kp0, kp1 = pred["keypoints0"], pred["keypoints2"]
+    m0, scores0 = pred["matches0"], pred["matching_scores0"]
+    pts0, pts1, scores = get_matches_scores(kp0, kp1, m0, scores0)
+
+    results = {}
+
+    estimator = load_estimator("relative_pose", conf["estimator"])(conf)
+    data_ = {
+        "m_kpts0": pts0,
+        "m_kpts1": pts1,
+        "camera0": data["view0"]["camera"][0],
+        "camera1": data["view2"]["camera"][0],
     }
     est = estimator(data_)
 
@@ -173,11 +233,78 @@ def eval_homography_robust(data, pred, conf):
     return results
 
 
+def eval_homography_robust_friends(data, pred, conf):
+    H_gt = data["H_0to2"]
+    if H_gt.ndim > 2:
+        return eval_per_batch_item(data, pred, eval_relative_pose_robust_friends, conf)
+
+    estimator = load_estimator("homography", conf["estimator"])(conf)
+
+    data_ = {}
+    if "keypoints0" in pred:
+        kp0, kp1 = pred["keypoints0"], pred["keypoints2"]
+        m0, scores0 = pred["matches0"], pred["matching_scores0"]
+        pts0, pts1, _ = get_matches_scores(kp0, kp1, m0, scores0)
+        data_["m_kpts0"] = pts0
+        data_["m_kpts1"] = pts1
+    if "lines0" in pred:
+        if "orig_lines0" in pred:
+            lines0 = pred["orig_lines0"]
+            lines1 = pred["orig_lines1"]
+        else:
+            lines0 = pred["lines0"]
+            lines1 = pred["lines1"]
+        m_lines0, m_lines1, _ = get_matches_scores(
+            lines0, lines1, pred["line_matches0"], pred["line_matching_scores0"]
+        )
+        data_["m_lines0"] = m_lines0
+        data_["m_lines1"] = m_lines1
+
+    est = estimator(data_)
+    if est["success"]:
+        M = est["M_0to1"]
+        error_r = homography_corner_error(M, H_gt, data["view0"]["image_size"]).item()
+    else:
+        error_r = float("inf")
+
+    results = {}
+    results["H_error_ransac"] = error_r
+    if "inliers" in est:
+        inl = est["inliers"]
+        results["ransac_inl"] = inl.float().sum().item()
+        results["ransac_inl%"] = inl.float().sum().item() / max(len(inl), 1)
+
+    return results
+
+
 def eval_homography_dlt(data, pred):
     H_gt = data["H_0to1"]
     H_inf = torch.ones_like(H_gt) * float("inf")
 
     kp0, kp1 = pred["keypoints0"], pred["keypoints1"]
+    m0, scores0 = pred["matches0"], pred["matching_scores0"]
+    pts0, pts1, scores = get_matches_scores(kp0, kp1, m0, scores0)
+    scores = scores.to(pts0)
+    results = {}
+    try:
+        if H_gt.ndim == 2:
+            pts0, pts1, scores = pts0[None], pts1[None], scores[None]
+        h_dlt = find_homography_dlt(pts0, pts1, scores)
+        if H_gt.ndim == 2:
+            h_dlt = h_dlt[0]
+    except AssertionError:
+        h_dlt = H_inf
+
+    error_dlt = homography_corner_error(h_dlt, H_gt, data["view0"]["image_size"])
+    results["H_error_dlt"] = error_dlt.item()
+    return results
+
+
+def eval_homography_dlt_friends(data, pred):
+    H_gt = data["H_0to2"]
+    H_inf = torch.ones_like(H_gt) * float("inf")
+
+    kp0, kp1 = pred["keypoints0"], pred["keypoints2"]
     m0, scores0 = pred["matches0"], pred["matching_scores0"]
     pts0, pts1, scores = get_matches_scores(kp0, kp1, m0, scores0)
     scores = scores.to(pts0)

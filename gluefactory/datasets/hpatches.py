@@ -40,6 +40,7 @@ class HPatches(BaseDataset, torch.utils.data.Dataset):
         "subset": None,
         "ignore_large_images": True,
         "grayscale": False,
+        "triplet": False
     }
 
     # Large images that were ignored in previous papers
@@ -63,7 +64,7 @@ class HPatches(BaseDataset, torch.utils.data.Dataset):
         if not self.root.exists():
             logger.info("Downloading the HPatches dataset.")
             self.download()
-        self.sequences = sorted([x.name for x in self.root.iterdir()])
+        self.sequences = sorted([x.name for x in self.root.iterdir()])  # 116个序列的名字
         if not self.sequences:
             raise ValueError("No image found!")
         self.items = []  # (seq, q_idx, is_illu)
@@ -93,20 +94,59 @@ class HPatches(BaseDataset, torch.utils.data.Dataset):
         return self.preprocessor(img)
 
     def __getitem__(self, idx):
-        seq, q_idx, is_illu = self.items[idx]
-        data0 = self._read_image(seq, 1)
-        data1 = self._read_image(seq, q_idx)
-        H = read_homography(self.root / seq / f"H_1_{q_idx}")
-        H = data1["transform"] @ H @ np.linalg.inv(data0["transform"])
-        return {
-            "H_0to1": H.astype(np.float32),
-            "scene": seq,
-            "idx": idx,
-            "is_illu": is_illu,
-            "name": f"{seq}/{idx}.ppm",
-            "view0": data0,
-            "view1": data1,
-        }
+        if self.conf.triplet == False:
+            seq, q_idx, is_illu = self.items[idx]
+            data0 = self._read_image(seq, 1)
+            data1 = self._read_image(seq, q_idx)
+            H = read_homography(self.root / seq / f"H_1_{q_idx}")
+            H = data1["transform"] @ H @ np.linalg.inv(data0["transform"])
+
+            result = {
+                "H_0to1": H.astype(np.float32),
+                "scene": seq,
+                "idx": idx,
+                "is_illu": is_illu,
+                "name": f"{seq}/{idx}.ppm",
+                "view0": data0,
+                "view1": data1,
+            }
+
+        else:
+            seq, q_idx, is_illu = self.items[idx]
+            data0 = self._read_image(seq, 1)
+            data2 = self._read_image(seq, q_idx)
+            H = read_homography(self.root / seq / f"H_1_{q_idx}")
+            H = data2["transform"] @ H @ np.linalg.inv(data0["transform"])
+
+            result = {
+                "H_0to2": H.astype(np.float32),
+                "scene": seq,
+                "idx": idx,
+                "is_illu": is_illu,
+                "name": f"{seq}/{idx}.ppm",
+                "view0": data0,
+                "view2": data2,
+            }
+
+            sup_view_table = {
+                2: 3,
+                3: 2,
+                4: 3,
+                5: 4,
+                6: 4
+            }
+
+            data1 = self._read_image(seq, sup_view_table[q_idx])    # 辅助视图作为data1
+            H1 = read_homography(self.root / seq / f"H_1_{q_idx}")
+            H1 = data2["transform"] @ H @ np.linalg.inv(data0["transform"])
+
+            result = {
+                "view1": data1,
+                "H_0to1": H1.astype(np.float32),
+                **result,
+            }
+
+        return result
 
     def __len__(self):
         return len(self.items)

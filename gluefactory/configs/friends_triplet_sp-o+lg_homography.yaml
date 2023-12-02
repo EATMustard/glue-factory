@@ -4,13 +4,14 @@ data:
     train_size: 150000
     val_size: 2000
     batch_size: 24
-    num_workers: 14
+    num_workers: 16
     triplet: True
     homography:
         difficulty: 0.7
         max_angle: 45
     photometric:
         name: lg
+experience_2views: sp+lg_homography
 model:
     name: friends_triplet_pipeline
     extractor:

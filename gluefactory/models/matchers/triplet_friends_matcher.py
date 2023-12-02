@@ -484,7 +484,7 @@ class TripletFriendsMatcher(nn.Module):
             assert key in data, f"Missing key {key} in data"
         if data["help_view"] == 1:
             match_view = [0, 2]
-        else:
+        elif data["help_view"] == 2 or data["help_view"] == 0:
             match_view = [0, 1]
         kpts0, kpts1 = data[f"keypoints{match_view[0]}"], data[f"keypoints{match_view[1]}"]
         b, m, _ = kpts0.shape  # 16 512
