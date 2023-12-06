@@ -406,7 +406,7 @@ class TripletFriendsMatcher(nn.Module):
         },
     }
 
-    required_data_keys = ["keypoints0", "keypoints1", "descriptors0", "descriptors1"]
+    required_data_keys = ["keypoints0", "descriptors0"]
 
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 

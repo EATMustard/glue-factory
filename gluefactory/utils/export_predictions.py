@@ -12,6 +12,8 @@ import torch
 from tqdm import tqdm
 
 from .tensor import batch_to_device
+from ..visualization.visualize_batch import make_match_figures
+import matplotlib.pyplot as plt
 
 
 @torch.no_grad()
@@ -29,9 +31,13 @@ def export_predictions(
     hfile = h5py.File(str(output_file), "w")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device).eval()
-    for data_ in tqdm(loader):
+    for iteration, data_ in tqdm(enumerate(loader), desc="Processing", total=len(loader)):
         data = batch_to_device(data_, device, non_blocking=True)
         pred = model(data)
+
+        # match_figures = make_match_figures(pred, data)
+        # match_figures["matching"].savefig(f'outputs/figure/{iteration}.png')
+
         if callback_fn is not None:
             pred = {**callback_fn(pred, data), **pred}
         if keys != "*":
@@ -103,7 +109,7 @@ def friends_export_predictions(
 
     model = model.to(device).eval()
     model_2views = model_2views.to(device).eval()
-    for data_ in tqdm(loader):
+    for iteration, data_ in tqdm(enumerate(loader), desc="Processing", total=len(loader)):
         data = batch_to_device(data_, device, non_blocking=True)
 
         pred_2view = model_2views(data)
@@ -113,6 +119,10 @@ def friends_export_predictions(
 
 
         pred = model(data)
+
+        # match_figures = make_match_figures(pred,data)
+        # match_figures["matching"].savefig(f'outputs/figure_friends/{iteration}.png')
+
         if callback_fn is not None:
             pred = {**callback_fn(pred, data), **pred}
         if keys != "*":

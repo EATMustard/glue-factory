@@ -29,7 +29,7 @@ from gluefactory.eval.utils import (
 class HPatchesPipeline(EvalPipeline):
     default_conf = {
         "data": {
-            "triplet": True,
+            "triplet": False,
             "batch_size": 1,
             "name": "hpatches",
             "num_workers": 8,

@@ -27,30 +27,53 @@ def make_match_figures(pred_, data_, n_pairs=2):
     assert view0["image"].shape[0] >= n_pairs
 
     m0 = pred["matches0"]
-    gtm0 = pred["gt_matches0"]
-
-    for i in range(n_pairs):
-        valid = (m0[i] > -1) & (gtm0[i] >= -1)
-        kpm0, kpm1 = kp0[i][valid].numpy(), kp1[i][m0[i][valid]].numpy()
-        images.append(
-            [view0["image"][i].permute(1, 2, 0), view1["image"][i].permute(1, 2, 0)]
-        )
-        kpts.append([kp0[i], kp1[i]])
-        matches.append((kpm0, kpm1))
-
-        correct = gtm0[i][valid] == m0[i][valid]
-
-        if "heatmap0" in pred.keys():
-            heatmaps.append(
-                [
-                    torch.sigmoid(pred["heatmap0"][i, 0]),
-                    torch.sigmoid(pred["heatmap1"][i, 0]),
-                ]
+    if "gt_matches0" in pred:
+        gtm0 = pred["gt_matches0"]
+        for i in range(n_pairs):
+            valid = (m0[i] > -1) & (gtm0[i] >= -1)
+            kpm0, kpm1 = kp0[i][valid].numpy(), kp1[i][m0[i][valid]].numpy()
+            images.append(
+                [view0["image"][i].permute(1, 2, 0), view1["image"][i].permute(1, 2, 0)]
             )
-        elif "depth" in view0.keys() and view0["depth"] is not None:
-            heatmaps.append([view0["depth"][i], view1["depth"][i]])
+            kpts.append([kp0[i], kp1[i]])
+            matches.append((kpm0, kpm1))
 
-        mcolors.append(cm_RdGn(correct).tolist())
+            correct = gtm0[i][valid] == m0[i][valid]
+
+            if "heatmap0" in pred.keys():
+                heatmaps.append(
+                    [
+                        torch.sigmoid(pred["heatmap0"][i, 0]),
+                        torch.sigmoid(pred["heatmap1"][i, 0]),
+                    ]
+                )
+            elif "depth" in view0.keys() and view0["depth"] is not None:
+                heatmaps.append([view0["depth"][i], view1["depth"][i]])
+
+            mcolors.append(cm_RdGn(correct).tolist())
+    else:
+        for i in range(n_pairs):
+            valid = (m0[i] > -1)
+            kpm0, kpm1 = kp0[i][valid].numpy(), kp1[i][m0[i][valid]].numpy()
+            images.append(
+                [view0["image"][i].permute(1, 2, 0), view1["image"][i].permute(1, 2, 0)]
+            )
+            kpts.append([kp0[i], kp1[i]])
+            matches.append((kpm0, kpm1))
+
+            correct = m0[i][valid]>0
+
+            if "heatmap0" in pred.keys():
+                heatmaps.append(
+                    [
+                        torch.sigmoid(pred["heatmap0"][i, 0]),
+                        torch.sigmoid(pred["heatmap1"][i, 0]),
+                    ]
+                )
+            elif "depth" in view0.keys() and view0["depth"] is not None:
+                heatmaps.append([view0["depth"][i], view1["depth"][i]])
+
+            mcolors.append(cm_RdGn(correct).tolist())
 
     fig, axes = plot_image_grid(images, return_fig=True, set_lim=True)
     if len(heatmaps) > 0:

@@ -131,9 +131,9 @@ class HPatches(BaseDataset, torch.utils.data.Dataset):
             sup_view_table = {
                 2: 3,
                 3: 2,
-                4: 3,
-                5: 4,
-                6: 4
+                4: 2,
+                5: 2,
+                6: 2
             }
 
             data1 = self._read_image(seq, sup_view_table[q_idx])    # 辅助视图作为data1

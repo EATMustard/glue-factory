@@ -63,6 +63,18 @@ class FriendsTripletPipeline(TwoViewPipeline):
         pred.update({f"gt_{gt_views_idx[0]}_{gt_views_idx[1]}_matches0": data["matches0"]})
         pred = self.create_help_descritors(pred, gt_views_idx)
 
+        key_list_del = ["keypoints1", "keypoint_scores1", "descriptors1"]
+
+        for key in key_list_del:
+            del pred[key]
+        for key in key_list:
+            del data[key]
+        del data['view1']
+        del data['H_0to1']
+        if 'H_1to2' in data:
+            del data['H_1to2']
+        del data['matches0']
+
 
         # # assert not self.conf.run_gt_in_forward
         # pred0 = self.extract_view(data, "0")
@@ -121,6 +133,7 @@ class FriendsTripletPipeline(TwoViewPipeline):
 
         if self.conf.matcher.name:
             pred = {**pred, **self.matcher({**data, **pred, "help_view": self.conf.help_view})}
+            del pred['help_descriptors']
         if self.conf.filter.name:
             pred = {**pred, **self.filter({**data, **pred})}
         if self.conf.solver.name:

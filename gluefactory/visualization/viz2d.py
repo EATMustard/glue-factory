@@ -57,7 +57,7 @@ def plot_images(imgs, titles=None, cmaps="gray", dpi=100, pad=0.5, adaptive=True
         imgs: a list of NumPy or PyTorch images, RGB (H, W, 3) or mono (H, W).
         titles: a list of strings, as titles for each image.
         cmaps: colormaps for monochrome images.
-        adaptive: whether the figure size should fit the image aspect ratios.
+        adaptive: whether the figure_friends size should fit the image aspect ratios.
     """
     n = len(imgs)
     if not isinstance(cmaps, (list, tuple)):
@@ -98,7 +98,7 @@ def plot_image_grid(
         imgs: a list of lists of NumPy or PyTorch images, RGB (H, W, 3) or mono (H, W).
         titles: a list of strings, as titles for each image.
         cmaps: colormaps for monochrome images.
-        adaptive: whether the figure size should fit the image aspect ratios.
+        adaptive: whether the figure_friends size should fit the image aspect ratios.
     """
     nr, n = len(imgs), len(imgs[0])
     if not isinstance(cmaps, (list, tuple)):
@@ -435,7 +435,7 @@ def plot_color_line_matches(lines, correct_matches=None, lw=2, indices=(0, 1)):
 
 
 def save_plot(path, **kw):
-    """Save the current figure without any white margin."""
+    """Save the current figure_friends without any white margin."""
     plt.savefig(path, bbox_inches="tight", pad_inches=0, **kw)
 
 

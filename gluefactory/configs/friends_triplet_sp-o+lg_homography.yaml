@@ -4,7 +4,7 @@ data:
     train_size: 150000
     val_size: 2000
     batch_size: 24
-    num_workers: 16
+    num_workers: 12
     triplet: True
     homography:
         difficulty: 0.7
@@ -34,14 +34,14 @@ train:
     seed: 0
     epochs: 40
     log_every_iter: 100
-    eval_every_iter: 500
+    eval_every_iter: 1250
     lr: 1e-4
     lr_schedule:
         start: 20
         type: exp
         on_epoch: true
         exp_div_10: 10
-    plot: [5, 'gluefactory.visualization.visualize_batch.make_match_figures']
+    plot: [8, 'gluefactory.visualization.visualize_batch.make_match_figures']
 benchmarks:
     hpatches:
       eval:

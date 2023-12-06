@@ -23,6 +23,7 @@ from tqdm import tqdm
 from gluefactory import __module_name__, logger
 from gluefactory.datasets import get_dataset
 from gluefactory.eval import run_benchmark
+from gluefactory.eval.io import parse_eval_args, load_model
 from gluefactory.models import get_model
 from gluefactory.settings import EVAL_PATH, TRAINING_PATH
 from gluefactory.utils.experiments import get_best_checkpoint, get_last_checkpoint, save_experiment
@@ -91,6 +92,58 @@ def do_evaluation(model, loader, device, loss_fn, conf, pbar=True):
     ):
         data = batch_to_device(data, device, non_blocking=True)
         with torch.no_grad():
+            pred = model(data)
+            losses, metrics = loss_fn(pred, data)
+            if conf.plot is not None and i in plot_ids:
+                figures.append(locate(plot_fn)(pred, data))
+            # add PR curves
+            for k, v in conf.pr_curves.items():
+                pr_metrics[k].update(
+                    pred[v["labels"]],
+                    pred[v["predictions"]],
+                    mask=pred[v["mask"]] if "mask" in v.keys() else None,
+                )
+            del pred, data
+        numbers = {**metrics, **{"loss/" + k: v for k, v in losses.items()}}
+        for k, v in numbers.items():
+            if k not in results:
+                results[k] = AverageMetric()
+                if k in conf.median_metrics:
+                    results[k + "_median"] = MedianMetric()
+                if k in conf.recall_metrics.keys():
+                    q = conf.recall_metrics[k]
+                    results[k + f"_recall{int(q)}"] = RecallMetric(q)
+            results[k].update(v)
+            if k in conf.median_metrics:
+                results[k + "_median"].update(v)
+            if k in conf.recall_metrics.keys():
+                q = conf.recall_metrics[k]
+                results[k + f"_recall{int(q)}"].update(v)
+        del numbers
+    results = {k: results[k].compute() for k in results}
+    return results, {k: v.compute() for k, v in pr_metrics.items()}, figures
+
+
+@torch.no_grad()
+def do_evaluation_friends(model, model_2views, loader, device, loss_fn, conf, pbar=True):
+    model.eval()
+    results = {}
+    pr_metrics = defaultdict(PRMetric)
+    figures = []
+    if conf.plot is not None:
+        n, plot_fn = conf.plot
+        plot_ids = np.random.choice(len(loader), min(len(loader), n), replace=False)
+    for i, data in enumerate(
+            tqdm(loader, desc="Evaluation", ascii=True, disable=not pbar)
+    ):
+        data = batch_to_device(data, device, non_blocking=True)
+        with torch.no_grad():
+
+            pred_2view = model_2views(data)
+            key_list = ["keypoints0", "keypoints1", "keypoint_scores0", "keypoint_scores1",
+                        "descriptors0", "descriptors1", "matches0"]
+            data = {**data, **dict((key, pred_2view[key]) for key in key_list)}
+
             pred = model(data)
             losses, metrics = loss_fn(pred, data)
             if conf.plot is not None and i in plot_ids:
@@ -289,6 +342,28 @@ def training(rank, conf, output_dir, args):
 
     stop = False
     signal.signal(signal.SIGINT, sigint_handler)
+
+
+    # ----------------------------------
+    # 根据配置路径 加载模型配置
+    # get_model
+
+    # conf.experience_2views
+    if conf.get('experience_2views'):
+        checkpoint_2viewsconf = OmegaConf.load(
+            TRAINING_PATH / conf.get('experience_2views') / "config.yaml"
+        )
+        # 只留下model
+        mconf_2views = OmegaConf.create(
+            {
+                "model": checkpoint_2viewsconf.get("model", {})
+            }
+        )
+    # ----------------------------------
+    model_2views = load_model(mconf_2views.model, conf.get('experience_2views'))
+    model_2views = model_2views.to(device).eval()
+
+
     model = get_model(conf.model.name)(conf.model).to(device)
     if args.compile:
         model = torch.compile(model, mode=args.compile)
@@ -417,6 +492,16 @@ def training(rank, conf, output_dir, args):
 
             with autocast(enabled=args.mixed_precision is not None, dtype=mp_dtype):
                 data = batch_to_device(data, device, non_blocking=True)
+
+                # -------------------2views--------------------
+                pred_2view = model_2views(data)
+                key_list = ["keypoints0", "keypoints1", "keypoint_scores0", "keypoint_scores1",
+                            "descriptors0", "descriptors1", "matches0"]
+                data = {**data, **dict((key, pred_2view[key]) for key in key_list)}
+
+                # ---------------------------------------------
+
+                del pred_2view
                 pred = model(data)
                 losses, _ = loss_fn(pred, data)
                 loss = torch.mean(losses["total"])
@@ -525,8 +610,9 @@ def training(rank, conf, output_dir, args):
                     or it == (len(train_loader) - 1)
             ):
                 with fork_rng(seed=conf.train.seed):
-                    results, pr_metrics, figures = do_evaluation(
+                    results, pr_metrics, figures = do_evaluation_friends(
                         model,
+                        model_2views,
                         val_loader,
                         device,
                         loss_fn,
